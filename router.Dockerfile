@@ -12,6 +12,7 @@ COPY pkg/    pkg/
 COPY cmd/    cmd/
 
 # Build
+USER root
 RUN CGO_ENABLED=0  go build -a -o router ./cmd/router
 
 # Copy the inference-router into a thin image
@@ -19,4 +20,6 @@ FROM registry.access.redhat.com/ubi8/ubi-micro:latest
 COPY third_party/ third_party/
 WORKDIR /ko-app
 COPY --from=builder /go/src/github.com/kserve/kserve/router /ko-app/
+USER 65530:65530
+
 ENTRYPOINT ["/ko-app/router"]

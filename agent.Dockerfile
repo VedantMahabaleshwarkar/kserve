@@ -12,6 +12,7 @@ COPY pkg/    pkg/
 COPY cmd/    cmd/
 
 # Build
+USER root
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS=-mod=mod go build -a -o agent ./cmd/agent
 
 # Copy the inference-agent into a thin image
@@ -19,4 +20,6 @@ FROM registry.access.redhat.com/ubi8/ubi-micro:latest
 COPY third_party/ third_party/
 WORKDIR /ko-app
 COPY --from=builder /go/src/github.com/kserve/kserve/agent /ko-app/
+USER 65531:65531
+
 ENTRYPOINT ["/ko-app/agent"]
