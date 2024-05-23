@@ -16,7 +16,7 @@ USER root
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS=-mod=mod go build -a -o manager ./cmd/manager
 
 # Use distroless as minimal base image to package the manager binary
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 COPY third_party/ /third_party/
 COPY --from=builder /go/src/github.com/kserve/kserve/manager /
 USER 65532:65532

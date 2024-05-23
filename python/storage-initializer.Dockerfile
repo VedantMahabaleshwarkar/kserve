@@ -1,7 +1,7 @@
 ARG PYTHON_VERSION=3.9
 ARG VENV_PATH=/prod_venv
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6 as builder
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest as builder
 
 # Install Python and dependencies
 RUN microdnf install -y python39 python39-devel gcc libffi-devel openssl-devel && microdnf clean all
@@ -25,9 +25,10 @@ COPY kserve kserve
 RUN cd kserve && poetry install --no-interaction --no-cache --extras "storage"
 
 RUN pip install --no-cache-dir krbcontext==0.10 hdfs~=2.6.0 requests-kerberos==0.14.0
+# Fixes Quay alert GHSA-2jv5-9r88-3w3p https://github.com/Kludex/python-multipart/security/advisories/GHSA-2jv5-9r88-3w3p
 RUN pip install --no-cache-dir starlette==0.36.2
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6 as prod
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest as prod
 
 COPY third_party third_party
 
@@ -37,8 +38,8 @@ ENV VIRTUAL_ENV=${VENV_PATH}
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN microdnf install -y shadow-utils && \
-    microdnf clean all && \
-    useradd kserve -m -u 1000 -d /home/kserve
+    microdnf clean all
+RUN useradd kserve -m -u 1000 -d /home/kserve
 
 COPY --from=builder --chown=kserve:kserve $VIRTUAL_ENV $VIRTUAL_ENV
 COPY --from=builder kserve kserve
