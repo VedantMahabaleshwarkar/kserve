@@ -17,9 +17,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOFLAGS=-mod=mod go build -a -o agent ./cmd/agent
 
 # Copy the inference-agent into a thin image
 FROM registry.access.redhat.com/ubi8/ubi-micro:latest
+RUN microdnf install -y shadow-utils && \ 
+    microdnf clean all && \ 
+    useradd kserve -m -u 1000 -d /home/kserve
 COPY third_party/ third_party/
 WORKDIR /ko-app
 COPY --from=builder /go/src/github.com/kserve/kserve/agent /ko-app/
-USER 65531:65531
+USER 1000:1000
 
 ENTRYPOINT ["/ko-app/agent"]
