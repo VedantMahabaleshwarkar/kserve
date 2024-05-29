@@ -16,10 +16,10 @@ USER root
 RUN CGO_ENABLED=0  go build -a -o router ./cmd/router
 
 # Copy the inference-router into a thin image
-FROM registry.access.redhat.com/ubi8/ubi-micro:latest
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 RUN microdnf install -y shadow-utils && \ 
     microdnf clean all && \ 
-    useradd kserve -m -u 1000 -d /home/kserve
+    useradd kserve -m -u 1000 -d /ko-app
 
 COPY third_party/ third_party/
 WORKDIR /ko-app
