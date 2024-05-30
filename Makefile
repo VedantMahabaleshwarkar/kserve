@@ -4,6 +4,7 @@ BASE_IMG ?= python:3.9-slim-bullseye
 PMML_BASE_IMG ?= openjdk:11-slim
 
 # Image URL to use all building/pushing image targets
+KO_DOCKER_REPO ?= quay.io/vedantm
 IMG ?= kserve-controller:latest
 AGENT_IMG ?= agent:latest
 ROUTER_IMG ?= router:latest
