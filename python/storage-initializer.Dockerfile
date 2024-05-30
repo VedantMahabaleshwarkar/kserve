@@ -37,7 +37,7 @@ ARG VENV_PATH
 ENV VIRTUAL_ENV=${VENV_PATH}
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN microdnf install -y shadow-utils && \
+RUN microdnf install -y shadow-utils python39 python39-devel && \
     microdnf clean all
 RUN useradd kserve -m -u 1000 -d /home/kserve
 
