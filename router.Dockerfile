@@ -24,6 +24,7 @@ RUN microdnf install -y shadow-utils && \
 COPY third_party/ third_party/
 WORKDIR /ko-app
 COPY --from=builder /go/src/github.com/kserve/kserve/router /ko-app/
+RUN chmod +x /ko-app/router
 USER 1000:1000
 
 ENTRYPOINT ["/ko-app/router"]
