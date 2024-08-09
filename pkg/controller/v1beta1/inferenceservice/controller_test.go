@@ -483,14 +483,65 @@ var _ = Describe("v1beta1 inference service controller", func() {
 			Data: configs,
 		}
 
+		// Define serving runtime
+		// Create ServingRuntime
+		servingRuntime := &v1alpha1.ServingRuntime{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "tf-serving",
+				Namespace: "default",
+			},
+			Spec: v1alpha1.ServingRuntimeSpec{
+				SupportedModelFormats: []v1alpha1.SupportedModelFormat{
+					{
+						Name:       "tensorflow",
+						Version:    proto.String("1"),
+						AutoSelect: proto.Bool(true),
+					},
+				},
+				ServingRuntimePodSpec: v1alpha1.ServingRuntimePodSpec{
+					Labels: map[string]string{
+						"key1": "val1FromSR",
+						"key2": "val2FromSR",
+						"key3": "val3FromSR",
+					},
+					Annotations: map[string]string{
+						"key1": "val1FromSR",
+						"key2": "val2FromSR",
+						"key3": "val3FromSR",
+					},
+					Containers: []v1.Container{
+						{
+							Name:    constants.InferenceServiceContainerName,
+							Image:   "tensorflow/serving:1.14.0",
+							Command: []string{"/usr/bin/tensorflow_model_server"},
+							Args: []string{
+								"--port=9000",
+								"--rest_api_port=8080",
+								"--model_base_path=/mnt/models",
+								"--rest_api_timeout_in_ms=60000",
+							},
+							Resources: defaultResource,
+						},
+					},
+					ImagePullSecrets: []v1.LocalObjectReference{
+						{Name: "sr-image-pull-secret"},
+					},
+				},
+				Disabled: proto.Bool(false),
+			},
+		}
+
 		// Define InferenceService
 		serviceName := "readonly-isvc"
 		var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: serviceName, Namespace: "default"}}
 		var serviceKey = expectedRequest.NamespacedName
 		var storageUri = "s3://test/mnist/export"
-		ctx := context.Background()
 
 		predictor := v1beta1.PredictorSpec{
+			ComponentExtensionSpec: v1beta1.ComponentExtensionSpec{
+				MinReplicas: v1beta1.GetIntReference(1),
+				MaxReplicas: 3,
+			},
 			Tensorflow: &v1beta1.TFServingSpec{
 				PredictorExtensionSpec: v1beta1.PredictorExtensionSpec{
 					StorageURI:     &storageUri,
@@ -498,10 +549,14 @@ var _ = Describe("v1beta1 inference service controller", func() {
 					Container: v1.Container{
 						Name:      constants.InferenceServiceContainerName,
 						Resources: defaultResource,
+						VolumeMounts: []v1.VolumeMount{
+							{Name: "predictor-volume"},
+						},
 					},
 				},
 			},
 		}
+
 		isvc := &v1beta1.InferenceService{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      serviceKey.Name,
@@ -512,30 +567,72 @@ var _ = Describe("v1beta1 inference service controller", func() {
 			},
 		}
 
-		It("should set the readOnly field in the /mnt/models volumeMount to true"+
+		It("should set the readOnly field in the /mnt/models volumeMount to true "+
 			"when storage.kserve.io/readyonly is unset", func() {
 			// Create config map
 			Expect(k8sClient.Create(context.TODO(), configMap)).NotTo(HaveOccurred())
 			defer k8sClient.Delete(context.TODO(), configMap)
 
-			// Create the inference service
+			// Create serving runtime
+			k8sClient.Create(context.TODO(), servingRuntime)
+			defer k8sClient.Delete(context.TODO(), servingRuntime)
+
+			// Create the InferenceService object and expect the Reconcile and knative service to be created
+			ctx := context.Background()
+			isvc.DefaultInferenceService(nil, nil)
 			Expect(k8sClient.Create(ctx, isvc)).Should(Succeed())
 			defer k8sClient.Delete(ctx, isvc)
 
-			// Grab a pod
-			podList := &v1.PodList{}
-			listOpts := []client.ListOption{
-				client.InNamespace(serviceKey.Namespace),
-				client.MatchingLabels{
-					"serving.kserve.io/inferenceservice": serviceKey.Name,
-				},
-			}
-			client.Client.List(k8sClient, ctx, podList, listOpts...)
-			pod := podList.Items[0]
+			// Knative service
+			actualService := &knservingv1.Service{}
+			predictorServiceKey := types.NamespacedName{Name: constants.PredictorServiceName(serviceKey.Name),
+				Namespace: serviceKey.Namespace}
+			Eventually(func() error { return k8sClient.Get(context.TODO(), predictorServiceKey, actualService) }, timeout).
+				Should(Succeed())
 
 			// Check the readonly value
-			isvcAnnotations := pod.Annotations
-			volumeMnt := pod.Spec.Containers[0].VolumeMounts[0]
+			volumeMnt := actualService.Spec.Template.Spec.Containers[0].VolumeMounts[0]
+			Expect(volumeMnt.ReadOnly).To(Equal(true))
+		})
+
+		It("should set the readOnly field in the /mnt/models volumeMount to true "+
+			"when storage.kserve.io/readyonly is true", func() {
+			// Create config map
+			Expect(k8sClient.Create(context.TODO(), configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(context.TODO(), configMap)
+
+			// Create serving runtime
+			k8sClient.Create(context.TODO(), servingRuntime)
+			defer k8sClient.Delete(context.TODO(), servingRuntime)
+
+			// Update inference service with readonly annotation
+			actualIsvc := &v1beta1.InferenceService{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, expectedRequest.NamespacedName, actualIsvc)
+				if err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+
+			annotations := map[string]string{constants.StorageReadonly: "true"}
+			updatedIsvc := actualIsvc.DeepCopy()
+			updatedIsvc.Annotations = annotations
+
+			// Create the InferenceService object and expect the Reconcile and knative service to be created
+			Expect(k8sClient.Update(ctx, updatedIsvc)).NotTo(HaveOccurred())
+			time.Sleep(10 * time.Second)
+
+			// Knative service
+			actualService := &knservingv1.Service{}
+			predictorServiceKey := types.NamespacedName{Name: constants.PredictorServiceName(serviceKey.Name),
+				Namespace: serviceKey.Namespace}
+			Eventually(func() error { return k8sClient.Get(context.TODO(), predictorServiceKey, actualService) }, timeout).
+				Should(Succeed())
+
+			// Check the readonly value
+			isvcAnnotations := actualService.Annotations
+			volumeMnt := actualService.Spec.Template.Spec.Containers[0].VolumeMounts[0]
 
 			Expect(isvcAnnotations[constants.StorageReadonly]).To(Equal(volumeMnt.ReadOnly))
 		})
