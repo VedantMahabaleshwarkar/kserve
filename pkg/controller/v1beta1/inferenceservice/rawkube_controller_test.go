@@ -345,6 +345,27 @@ var _ = Describe("v1beta1 inference service controller", func() {
 				Spec: netv1.IngressSpec{
 					Rules: []netv1.IngressRule{
 						{
+							Host: "raw-foo-default.example.com",
+							IngressRuleValue: netv1.IngressRuleValue{
+								HTTP: &netv1.HTTPIngressRuleValue{
+									Paths: []netv1.HTTPIngressPath{
+										{
+											Path:     "/",
+											PathType: &pathType,
+											Backend: netv1.IngressBackend{
+												Service: &netv1.IngressServiceBackend{
+													Name: "raw-foo-predictor",
+													Port: netv1.ServiceBackendPort{
+														Number: 80,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
 							Host: "raw-foo-predictor-default.example.com",
 							IngressRuleValue: netv1.IngressRuleValue{
 								HTTP: &netv1.HTTPIngressRuleValue{
@@ -740,6 +761,27 @@ var _ = Describe("v1beta1 inference service controller", func() {
 				Spec: netv1.IngressSpec{
 					Rules: []netv1.IngressRule{
 						{
+							Host: "raw-foo-customized-default.example.com",
+							IngressRuleValue: netv1.IngressRuleValue{
+								HTTP: &netv1.HTTPIngressRuleValue{
+									Paths: []netv1.HTTPIngressPath{
+										{
+											Path:     "/",
+											PathType: &pathType,
+											Backend: netv1.IngressBackend{
+												Service: &netv1.IngressServiceBackend{
+													Name: "raw-foo-customized-predictor",
+													Port: netv1.ServiceBackendPort{
+														Number: 80,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
 							Host: "raw-foo-customized-predictor-default.example.com",
 							IngressRuleValue: netv1.IngressRuleValue{
 								HTTP: &netv1.HTTPIngressRuleValue{
@@ -1125,6 +1167,27 @@ var _ = Describe("v1beta1 inference service controller", func() {
 			expectedIngress := netv1.Ingress{
 				Spec: netv1.IngressSpec{
 					Rules: []netv1.IngressRule{
+						{
+							Host: "raw-foo-2-default.example.com",
+							IngressRuleValue: netv1.IngressRuleValue{
+								HTTP: &netv1.HTTPIngressRuleValue{
+									Paths: []netv1.HTTPIngressPath{
+										{
+											Path:     "/",
+											PathType: &pathType,
+											Backend: netv1.IngressBackend{
+												Service: &netv1.IngressServiceBackend{
+													Name: "raw-foo-2-predictor",
+													Port: netv1.ServiceBackendPort{
+														Number: 80,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							Host: "raw-foo-2-predictor-default.example.com",
 							IngressRuleValue: netv1.IngressRuleValue{
@@ -1584,6 +1647,27 @@ var _ = Describe("v1beta1 inference service controller", func() {
 				Spec: netv1.IngressSpec{
 					Rules: []netv1.IngressRule{
 						{
+							Host: fmt.Sprintf("%s-default.example.com", serviceName),
+							IngressRuleValue: netv1.IngressRuleValue{
+								HTTP: &netv1.HTTPIngressRuleValue{
+									Paths: []netv1.HTTPIngressPath{
+										{
+											Path:     "/",
+											PathType: &pathType,
+											Backend: netv1.IngressBackend{
+												Service: &netv1.IngressServiceBackend{
+													Name: fmt.Sprintf("%s-predictor", serviceName),
+													Port: netv1.ServiceBackendPort{
+														Number: 80,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
 							Host: fmt.Sprintf("%s-predictor-default.example.com", serviceName),
 							IngressRuleValue: netv1.IngressRuleValue{
 								HTTP: &netv1.HTTPIngressRuleValue{
@@ -1998,6 +2082,27 @@ var _ = Describe("v1beta1 inference service controller", func() {
 				Spec: netv1.IngressSpec{
 					Rules: []netv1.IngressRule{
 						{
+							Host: fmt.Sprintf("%s.%s.%s", serviceName, serviceKey.Namespace, domain),
+							IngressRuleValue: netv1.IngressRuleValue{
+								HTTP: &netv1.HTTPIngressRuleValue{
+									Paths: []netv1.HTTPIngressPath{
+										{
+											Path:     "/",
+											PathType: &pathType,
+											Backend: netv1.IngressBackend{
+												Service: &netv1.IngressServiceBackend{
+													Name: fmt.Sprintf("%s-predictor", serviceName),
+													Port: netv1.ServiceBackendPort{
+														Number: 80,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
 							Host: fmt.Sprintf("%s-predictor.%s.%s", serviceName, serviceKey.Namespace, domain),
 							IngressRuleValue: netv1.IngressRuleValue{
 								HTTP: &netv1.HTTPIngressRuleValue{
@@ -2224,7 +2329,7 @@ var _ = Describe("v1beta1 inference service controller", func() {
 						"serving.kserve.io/deploymentMode": "RawDeployment",
 					},
 					Labels: map[string]string{
-						"networking.kserve.io/odh-auth": "true",
+						constants.ODHKserveRawAuth: "true",
 					},
 				},
 				Spec: v1beta1.InferenceServiceSpec{
@@ -2289,7 +2394,7 @@ var _ = Describe("v1beta1 inference service controller", func() {
 								constants.KServiceComponentLabel:      constants.Predictor.String(),
 								constants.InferenceServicePodLabelKey: serviceName,
 								"serving.kserve.io/inferenceservice":  serviceName,
-								"networking.kserve.io/odh-auth":       "true",
+								constants.ODHKserveRawAuth:            "true",
 							},
 							Annotations: map[string]string{
 								constants.StorageInitializerSourceUriInternalAnnotationKey: *isvc.Spec.Predictor.Model.StorageURI,
@@ -2459,12 +2564,6 @@ var _ = Describe("v1beta1 inference service controller", func() {
 				Spec: v1.ServiceSpec{
 					Ports: []v1.ServicePort{
 						{
-							Name:       constants.PredictorServiceName(serviceName),
-							Protocol:   "TCP",
-							Port:       80,
-							TargetPort: intstr.IntOrString{Type: 0, IntVal: 8080, StrVal: ""},
-						},
-						{
 							Name:       "https",
 							Protocol:   "TCP",
 							Port:       8443,
@@ -2495,41 +2594,6 @@ var _ = Describe("v1beta1 inference service controller", func() {
 			}
 			Expect(k8sClient.Status().Update(context.TODO(), updatedDeployment)).NotTo(gomega.HaveOccurred())
 
-			//check ingress
-			pathType := netv1.PathTypePrefix
-			actualIngress := &netv1.Ingress{}
-			predictorIngressKey := types.NamespacedName{Name: serviceKey.Name,
-				Namespace: serviceKey.Namespace}
-			Eventually(func() error { return k8sClient.Get(context.TODO(), predictorIngressKey, actualIngress) }, timeout).
-				Should(Succeed())
-			expectedIngress := netv1.Ingress{
-				Spec: netv1.IngressSpec{
-					Rules: []netv1.IngressRule{
-						{
-							Host: "raw-auth-predictor-default.example.com",
-							IngressRuleValue: netv1.IngressRuleValue{
-								HTTP: &netv1.HTTPIngressRuleValue{
-									Paths: []netv1.HTTPIngressPath{
-										{
-											Path:     "/",
-											PathType: &pathType,
-											Backend: netv1.IngressBackend{
-												Service: &netv1.IngressServiceBackend{
-													Name: "raw-auth-predictor",
-													Port: netv1.ServiceBackendPort{
-														Number: 8443,
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			Expect(actualIngress.Spec).To(gomega.Equal(expectedIngress.Spec))
 			// verify if InferenceService status is updated
 			expectedIsvcStatus := v1beta1.InferenceServiceStatus{
 				Status: duckv1.Status{

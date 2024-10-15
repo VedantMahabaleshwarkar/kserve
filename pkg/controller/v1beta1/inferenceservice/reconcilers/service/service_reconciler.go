@@ -18,7 +18,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
@@ -78,9 +77,6 @@ func createService(componentMeta metav1.ObjectMeta, componentExt *v1beta1.Compon
 					IntVal: container.Ports[0].ContainerPort,
 				},
 				Protocol: container.Ports[0].Protocol,
-			}
-			if servicePort.Name == "" {
-				servicePort.Name = "http"
 			}
 			servicePorts = append(servicePorts, servicePort)
 
@@ -153,11 +149,18 @@ func createService(componentMeta metav1.ObjectMeta, componentExt *v1beta1.Compon
 			},
 			Protocol: corev1.ProtocolTCP,
 		}
-		service.Spec.Ports = append(service.Spec.Ports, httpsPort)
-	}
-
-	for index, port := range service.Spec.Ports {
-		fmt.Println(index, port.Name, port.Port, port.TargetPort)
+		ports := service.Spec.Ports
+		replaced := false
+		for i, port := range ports {
+			if port.Port == constants.CommonDefaultHttpPort {
+				ports[i] = httpsPort
+				replaced = true
+			}
+		}
+		if !replaced {
+			ports = append(ports, httpsPort)
+		}
+		service.Spec.Ports = ports
 	}
 	return service
 }

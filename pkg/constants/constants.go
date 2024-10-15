@@ -123,7 +123,8 @@ const (
 	NetworkVisibility      = "networking.kserve.io/visibility"
 	ClusterLocalVisibility = "cluster-local"
 	ClusterLocalDomain     = "svc.cluster.local"
-	ODHKserveRawAuth       = "networking.kserve.io/odh-auth"
+	ODHKserveRawAuth       = "security.opendatahub.io/enable-auth"
+	ODHRouteEnabled        = "enable-route"
 )
 
 // StorageSpec Constants
