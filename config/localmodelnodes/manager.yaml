@@ -51,7 +51,7 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
         volumeMounts:
-          - mountPath: /mnt/models/models
+          - mountPath: /var/lib/kserve
             name: models
             readOnly: false
         resources:

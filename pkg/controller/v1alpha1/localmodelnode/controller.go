@@ -63,7 +63,7 @@ type LocalModelNodeReconciler struct {
 }
 
 const (
-	MountPath             = "/mnt/models" // Volume mount path for models, must be the same as the value in the DaemonSet spec
+	MountPath             = "/var/lib/kserve" // Volume mount path for models, must be the same as the value in the DaemonSet spec
 	DownloadContainerName = "kserve-localmodel-download"
 	PvcSourceMountName    = "kserve-pvc-source"
 )
@@ -152,9 +152,9 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 					},
 					// TODO: should not need elevated permissions https://issues.redhat.com/browse/RHOAIENG-33247
 					ServiceAccountName: "kserve-localmodelnode-agent",
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup: FSGroup,
-					},
+					//SecurityContext: &corev1.PodSecurityContext{
+					//	FSGroup: FSGroup,
+					//},
 				},
 			},
 		},
