@@ -21,7 +21,9 @@ data:
         "cpuRequest": "100m",
         "cpuLimit": "1",
         "enableDirectPvcVolumeMount": true,
-        "enableModelcar": true
+        "enableModelcar": true,
+        "cpuModelcar": "10m",
+        "memoryModelcar": "15Mi"
     }
   ingress: |-
     {

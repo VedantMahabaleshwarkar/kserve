@@ -25,9 +25,9 @@ spec:
         kserve/localmodel: worker
       serviceAccountName: kserve-localmodelnode-agent
       securityContext:
-        runAsUser: 0 # TODO: remove this to run as non-root https://issues.redhat.com/browse/RHOAIENG-33247
-#        seccompProfile:
-#          type: RuntimeDefault
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - command:
         - /manager
@@ -35,14 +35,12 @@ spec:
         imagePullPolicy: Always
         name: manager
         securityContext:
-          allowPrivilegeEscalation: true
-#          TODO: remove this to run as non-root https://issues.redhat.com/browse/RHOAIENG-33247
-#          capabilities:
-#            drop:
-#              - ALL
-          privileged: true
-          readOnlyRootFilesystem: false
-          runAsUser: 0
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
         env:
           - name: POD_NAMESPACE
             valueFrom:
@@ -53,7 +51,7 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
         volumeMounts:
-          - mountPath: /mnt/models
+          - mountPath: /mnt/models/models
             name: models
             readOnly: false
         resources:
@@ -65,9 +63,6 @@ spec:
             memory: 200Mi
       volumes:
         - name: models
-          hostPath:
-#            path: /models
-#            changed to work with Openshift permissions, re-evaluate as a part of https://issues.redhat.com/browse/RHOAIENG-33247
-            path: /var/lib/models
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: kserve-localmodelnode-pvc
       terminationGracePeriodSeconds: 10
