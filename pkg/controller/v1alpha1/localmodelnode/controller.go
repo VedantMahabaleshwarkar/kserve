@@ -110,7 +110,7 @@ func (c *LocalModelNodeReconciler) getNodeGroupFromNode(ctx context.Context, nod
 }
 
 func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode v1alpha1.LocalModelNode, modelInfo v1alpha1.LocalModelInfo) (*batchv1.Job, error) {
-	jobName := modelInfo.ModelName + "-" + localModelNode.ObjectMeta.Name
+	jobName := modelInfo.ModelName + "-" + localModelNode.Name
 	nodeGroup, err := c.getNodeGroupFromNode(ctx, nodeName)
 	if nodeGroup == nil {
 		c.Log.Error(err, "Failed to get node group for current node", "node name", nodeName)
@@ -127,7 +127,10 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 
 	// If no ClusterStorageContainer match, use StorageInitializerConfig
 	if container == nil {
-		container = c.getContainerSpecFromConfig(storageInitializerConfig)
+		container, err = c.getContainerSpecFromConfig(storageInitializerConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Use hash-based folder path for storage deduplication
@@ -217,7 +220,7 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 }
 
 // getContainerSpecFromConfig creates a container spec from the StorageInitializerConfig
-func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.StorageInitializerConfig) *corev1.Container {
+func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.StorageInitializerConfig) (*corev1.Container, error) {
 	image := defaultJobImage
 	if config != nil && config.Image != "" {
 		image = config.Image
@@ -231,19 +234,35 @@ func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.S
 
 	// Set resource limits/requests from config if available
 	if config != nil {
+		cpuLimit, err := resource.ParseQuantity(config.CpuLimit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CpuLimit %q: %w", config.CpuLimit, err)
+		}
+		memLimit, err := resource.ParseQuantity(config.MemoryLimit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid MemoryLimit %q: %w", config.MemoryLimit, err)
+		}
+		cpuRequest, err := resource.ParseQuantity(config.CpuRequest)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CpuRequest %q: %w", config.CpuRequest, err)
+		}
+		memRequest, err := resource.ParseQuantity(config.MemoryRequest)
+		if err != nil {
+			return nil, fmt.Errorf("invalid MemoryRequest %q: %w", config.MemoryRequest, err)
+		}
 		container.Resources = corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse(config.CpuLimit),
-				corev1.ResourceMemory: resource.MustParse(config.MemoryLimit),
+				corev1.ResourceCPU:    cpuLimit,
+				corev1.ResourceMemory: memLimit,
 			},
 			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse(config.CpuRequest),
-				corev1.ResourceMemory: resource.MustParse(config.MemoryRequest),
+				corev1.ResourceCPU:    cpuRequest,
+				corev1.ResourceMemory: memRequest,
 			},
 		}
 	}
 
-	return container
+	return container, nil
 }
 
 // injectCredentials injects credentials into the container based on the modelInfo configuration
@@ -280,7 +299,7 @@ func (c *LocalModelNodeReconciler) injectCredentials(ctx context.Context, contai
 // This function is kept for backward compatibility with ClusterStorageContainer
 func (c *LocalModelNodeReconciler) getContainerSpecForStorageUri(ctx context.Context, storageUri string) (*corev1.Container, error) {
 	storageContainers := &v1alpha1.ClusterStorageContainerList{}
-	if err := c.Client.List(ctx, storageContainers); err != nil {
+	if err := c.List(ctx, storageContainers); err != nil {
 		return nil, err
 	}
 
@@ -320,7 +339,7 @@ func (c *LocalModelNodeReconciler) getLatestJob(ctx context.Context, modelInfo v
 		jobNs = modelInfo.Namespace
 	}
 
-	if err := c.Client.List(ctx, jobList, client.InNamespace(jobNs), client.MatchingLabels(labelSelector)); err != nil {
+	if err := c.List(ctx, jobList, client.InNamespace(jobNs), client.MatchingLabels(labelSelector)); err != nil {
 		if errors.IsNotFound(err) {
 			c.Log.Info("Job not found", "model", modelInfo.ModelName, "namespace", modelInfo.Namespace)
 			return nil, 0, nil
@@ -354,7 +373,7 @@ func getModelStatusFromJobStatus(jobStatus batchv1.JobStatus) v1alpha1.ModelStat
 // Update the status of the LocalModelNode CR
 // Uses hash-based folders for storage deduplication while tracking each CR individually in status
 func (c *LocalModelNodeReconciler) downloadModels(ctx context.Context, localModelNode *v1alpha1.LocalModelNode) error {
-	c.Log.Info("Downloading models to", "node", localModelNode.ObjectMeta.Name)
+	c.Log.Info("Downloading models to", "node", localModelNode.Name)
 
 	newStatus := map[string]v1alpha1.ModelStatus{}
 	// Track which storage keys (URI hashes) have been processed for download deduplication
@@ -408,7 +427,7 @@ func (c *LocalModelNodeReconciler) downloadModels(ctx context.Context, localMode
 			newStatus[statusKey] = status
 			processedStorageKeys[storageKey] = status
 			c.Log.Info("model downloading status:", "model", modelInfo.ModelName, "statusKey", statusKey,
-				"node", localModelNode.ObjectMeta.Name, "status", status)
+				"node", localModelNode.Name, "status", status)
 		} else {
 			// Folder does not exist
 			c.Log.Info("Model folder not found", "model", modelInfo.ModelName, "storageKey", storageKey)
@@ -435,7 +454,7 @@ func (c *LocalModelNodeReconciler) downloadModels(ctx context.Context, localMode
 			newStatus[statusKey] = status
 			processedStorageKeys[storageKey] = status
 			c.Log.Info("model downloading status:", "model", modelInfo.ModelName, "statusKey", statusKey,
-				"node", localModelNode.ObjectMeta.Name, "status", status)
+				"node", localModelNode.Name, "status", status)
 		}
 	}
 
@@ -506,7 +525,7 @@ func (c *LocalModelNodeReconciler) cleanupJobs(ctx context.Context, localModelNo
 	for ns := range namespacesInSpec {
 		jobs := &batchv1.JobList{}
 		labelSelector := map[string]string{"node": localModelNode.Name}
-		if err := c.Client.List(ctx, jobs, client.InNamespace(ns), client.MatchingLabels(labelSelector)); err != nil {
+		if err := c.List(ctx, jobs, client.InNamespace(ns), client.MatchingLabels(labelSelector)); err != nil {
 			c.Log.Error(err, "Failed to list jobs", "node", localModelNode.Name, "namespace", ns)
 			return err
 		}
@@ -528,7 +547,7 @@ func (c *LocalModelNodeReconciler) cleanupJobs(ctx context.Context, localModelNo
 			if _, ok := statusKeysInSpec[statusKey]; !ok {
 				c.Log.Info("Deleting job", "job", job.Name, "statusKey", statusKey, "namespace", ns)
 				propagationPolicy := metav1.DeletePropagationBackground
-				if err := c.Client.Delete(ctx, &job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy}); err != nil {
+				if err := c.Delete(ctx, &job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy}); err != nil {
 					c.Log.Error(err, "Failed to delete job", "job", job.Name)
 					return err
 				}

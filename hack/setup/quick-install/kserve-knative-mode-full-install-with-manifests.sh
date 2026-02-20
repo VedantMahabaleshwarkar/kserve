@@ -40576,9 +40576,6 @@ spec:
                                                       enum:
                                                       - 301
                                                       - 302
-                                                      - 303
-                                                      - 307
-                                                      - 308
                                                       type: integer
                                                   type: object
                                                 responseHeaderModifier:
@@ -41180,9 +41177,6 @@ spec:
                                                 enum:
                                                 - 301
                                                 - 302
-                                                - 303
-                                                - 307
-                                                - 308
                                                 type: integer
                                             type: object
                                           responseHeaderModifier:
@@ -45513,6 +45507,11 @@ spec:
                             x-kubernetes-list-type: map
                         type: object
                     type: object
+                type: object
+              storageInitializer:
+                properties:
+                  enabled:
+                    type: boolean
                 type: object
               template:
                 properties:
@@ -61167,9 +61166,6 @@ spec:
                                                       enum:
                                                       - 301
                                                       - 302
-                                                      - 303
-                                                      - 307
-                                                      - 308
                                                       type: integer
                                                   type: object
                                                 responseHeaderModifier:
@@ -61771,9 +61767,6 @@ spec:
                                                 enum:
                                                 - 301
                                                 - 302
-                                                - 303
-                                                - 307
-                                                - 308
                                                 type: integer
                                             type: object
                                           responseHeaderModifier:
@@ -66053,6 +66046,11 @@ spec:
                             x-kubernetes-list-type: map
                         type: object
                     type: object
+                type: object
+              storageInitializer:
+                properties:
+                  enabled:
+                    type: boolean
                 type: object
               template:
                 properties:
@@ -81749,9 +81747,6 @@ spec:
                                                       enum:
                                                       - 301
                                                       - 302
-                                                      - 303
-                                                      - 307
-                                                      - 308
                                                       type: integer
                                                   type: object
                                                 responseHeaderModifier:
@@ -82353,9 +82348,6 @@ spec:
                                                 enum:
                                                 - 301
                                                 - 302
-                                                - 303
-                                                - 307
-                                                - 308
                                                 type: integer
                                             type: object
                                           responseHeaderModifier:
@@ -86686,6 +86678,11 @@ spec:
                             x-kubernetes-list-type: map
                         type: object
                     type: object
+                type: object
+              storageInitializer:
+                properties:
+                  enabled:
+                    type: boolean
                 type: object
               template:
                 properties:
@@ -102416,9 +102413,6 @@ spec:
                                                       enum:
                                                       - 301
                                                       - 302
-                                                      - 303
-                                                      - 307
-                                                      - 308
                                                       type: integer
                                                   type: object
                                                 responseHeaderModifier:
@@ -103020,9 +103014,6 @@ spec:
                                                 enum:
                                                 - 301
                                                 - 302
-                                                - 303
-                                                - 307
-                                                - 308
                                                 type: integer
                                             type: object
                                           responseHeaderModifier:
@@ -107383,6 +107374,11 @@ spec:
                             x-kubernetes-list-type: map
                         type: object
                     type: object
+                type: object
+              storageInitializer:
+                properties:
+                  enabled:
+                    type: boolean
                 type: object
               template:
                 properties:

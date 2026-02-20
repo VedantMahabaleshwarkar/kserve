@@ -89,12 +89,12 @@ func (c *LocalModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Step 1 - Checks if the CR is in the deletion process
-	if localModel.ObjectMeta.DeletionTimestamp.IsZero() {
+	if localModel.DeletionTimestamp.IsZero() {
 		// The object is not being deleted, so if it does not have our finalizer,
 		// then lets add the finalizer and update the object.
-		if !utils.Includes(localModel.ObjectMeta.Finalizers, FinalizerName) {
+		if !utils.Includes(localModel.Finalizers, FinalizerName) {
 			patch := client.MergeFrom(localModel.DeepCopy())
-			localModel.ObjectMeta.Finalizers = append(localModel.ObjectMeta.Finalizers, FinalizerName)
+			localModel.Finalizers = append(localModel.Finalizers, FinalizerName)
 			if err := c.Patch(ctx, localModel, patch); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -171,7 +171,7 @@ func (c *LocalModelReconciler) nodeFunc(ctx context.Context, obj client.Object) 
 	node := obj.(*corev1.Node)
 	requests := []reconcile.Request{}
 	models := &v1alpha1.LocalModelCacheList{}
-	if err := c.Client.List(ctx, models); err != nil {
+	if err := c.List(ctx, models); err != nil {
 		c.Log.Error(err, "list models error when reconciling nodes")
 		return []reconcile.Request{}
 	}
@@ -270,22 +270,7 @@ func (c *LocalModelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
-	nodePredicates := predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			// Only reconciles the local model crs when the node becomes ready from not ready
-			// Todo: add tests
-			oldNode := e.ObjectNew.(*corev1.Node)
-			newNode := e.ObjectNew.(*corev1.Node)
-			return !IsNodeReady(*oldNode) && IsNodeReady(*newNode)
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			// Do nothing here, generates local model cr reconcile requests in nodeFunc
-			return true
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
-		},
-	}
+	nodePredicates := NodeReadyPredicate()
 
 	// Define predicates to filter events based on changes to the status field
 	localModelNodePredicates := predicate.Funcs{
