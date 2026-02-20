@@ -17,8 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"strings"
-
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -72,20 +70,7 @@ func init() {
 	SchemeBuilder.Register(&LocalModelNamespaceCache{}, &LocalModelNamespaceCacheList{})
 }
 
-// MatchStorageURI checks if the storageUri from inference service matches the sourceModelUri
-// of the LocalModelNamespaceCache or is a subdirectory of the sourceModelUri
+// MatchStorageURI checks if storageUri matches the sourceModelUri or is a subdirectory of it
 func (spec *LocalModelNamespaceCacheSpec) MatchStorageURI(storageUri string) bool {
-	cachedUri := strings.TrimSuffix(spec.SourceModelUri, "/")
-	isvcStorageUri := strings.TrimSuffix(storageUri, "/")
-	if strings.HasPrefix(isvcStorageUri, cachedUri) {
-		if len(isvcStorageUri) == len(cachedUri) {
-			return true
-		}
-
-		// If the storageUri is a subdirectory of the cachedUri, the next character after the cachedUri should be a "/"
-		if len(cachedUri) < len(isvcStorageUri) && string(isvcStorageUri[len(cachedUri)]) == "/" {
-			return true
-		}
-	}
-	return false
+	return MatchStorageURI(spec.SourceModelUri, storageUri)
 }

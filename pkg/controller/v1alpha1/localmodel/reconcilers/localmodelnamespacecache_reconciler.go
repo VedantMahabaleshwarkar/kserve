@@ -89,12 +89,12 @@ func (c *LocalModelNamespaceCacheReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	// Step 1 - Checks if the CR is in the deletion process
-	if localModel.ObjectMeta.DeletionTimestamp.IsZero() {
+	if localModel.DeletionTimestamp.IsZero() {
 		// The object is not being deleted, so if it does not have our finalizer,
 		// then lets add the finalizer and update the object.
-		if !utils.Includes(localModel.ObjectMeta.Finalizers, NamespaceCacheFinalizerName) {
+		if !utils.Includes(localModel.Finalizers, NamespaceCacheFinalizerName) {
 			patch := client.MergeFrom(localModel.DeepCopy())
-			localModel.ObjectMeta.Finalizers = append(localModel.ObjectMeta.Finalizers, NamespaceCacheFinalizerName)
+			localModel.Finalizers = append(localModel.Finalizers, NamespaceCacheFinalizerName)
 			if err := c.Patch(ctx, localModel, patch); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -185,7 +185,7 @@ func (c *LocalModelNamespaceCacheReconciler) nodeFuncNamespaceCache(ctx context.
 	node := obj.(*corev1.Node)
 	requests := []reconcile.Request{}
 	models := &v1alpha1.LocalModelNamespaceCacheList{}
-	if err := c.Client.List(ctx, models); err != nil {
+	if err := c.List(ctx, models); err != nil {
 		c.Log.Error(err, "list namespace models error when reconciling nodes")
 		return []reconcile.Request{}
 	}
@@ -279,19 +279,7 @@ func (c *LocalModelNamespaceCacheReconciler) SetupWithManager(mgr ctrl.Manager) 
 		},
 	}
 
-	nodePredicates := predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldNode := e.ObjectNew.(*corev1.Node)
-			newNode := e.ObjectNew.(*corev1.Node)
-			return !IsNodeReady(*oldNode) && IsNodeReady(*newNode)
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			return true
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
-		},
-	}
+	nodePredicates := NodeReadyPredicate()
 
 	localModelNodePredicates := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -312,7 +300,6 @@ func (c *LocalModelNamespaceCacheReconciler) SetupWithManager(mgr ctrl.Manager) 
 
 	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.LocalModelNamespaceCache{}).
-		Owns(&corev1.PersistentVolume{}).
 		Owns(&corev1.PersistentVolumeClaim{})
 
 	if !localModelConfig.DisableVolumeManagement {

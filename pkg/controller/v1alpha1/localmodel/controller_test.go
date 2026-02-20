@@ -761,8 +761,8 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			configMap, clusterStorageContainer = genericSetup(ctx, configs, clusterStorageContainerSpec)
 			initializeManager(ctx, cfg)
 			DeferCleanup(func() {
-				k8sClient.Delete(ctx, clusterStorageContainer)
-				k8sClient.Delete(ctx, configMap)
+				_ = k8sClient.Delete(ctx, clusterStorageContainer)
+				_ = k8sClient.Delete(ctx, configMap)
 
 				By("canceling the context")
 				cancel()
@@ -874,7 +874,7 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				if cachedModel.Status.ModelCopies == nil {
 					return false
 				}
-				if !(cachedModel.Status.ModelCopies.Available == 1 && cachedModel.Status.ModelCopies.Total == 1 && cachedModel.Status.ModelCopies.Failed == 0) {
+				if cachedModel.Status.ModelCopies.Available != 1 || cachedModel.Status.ModelCopies.Total != 1 || cachedModel.Status.ModelCopies.Failed != 0 {
 					return false
 				}
 				if cachedModel.Status.NodeStatus[nodeName1] != v1alpha1.NodeDownloaded {

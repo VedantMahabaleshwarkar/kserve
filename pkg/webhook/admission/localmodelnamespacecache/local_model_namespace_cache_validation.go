@@ -96,7 +96,7 @@ func (v *LocalModelNamespaceCacheValidator) ValidateDelete(ctx context.Context, 
 	// Check if current LocalModelNamespaceCache is being used by InferenceServices in the same namespace
 	for _, isvcMeta := range localModelNamespaceCache.Status.InferenceServices {
 		isvc := v1beta1.InferenceService{}
-		if err := v.Client.Get(ctx, client.ObjectKey(isvcMeta), &isvc); err != nil {
+		if err := v.Get(ctx, client.ObjectKey(isvcMeta), &isvc); err != nil {
 			localModelNamespaceCacheValidatorLogger.Error(err, "Error getting InferenceService", "name", isvcMeta.Name, "namespace", isvcMeta.Namespace)
 			return nil, err
 		}
@@ -118,7 +118,7 @@ func (v *LocalModelNamespaceCacheValidator) ValidateDelete(ctx context.Context, 
 func (v *LocalModelNamespaceCacheValidator) validateNodeGroups(ctx context.Context, cache *v1alpha1.LocalModelNamespaceCache) error {
 	for _, nodeGroupName := range cache.Spec.NodeGroups {
 		nodeGroup := &v1alpha1.LocalModelNodeGroup{}
-		if err := v.Client.Get(ctx, client.ObjectKey{Name: nodeGroupName}, nodeGroup); err != nil {
+		if err := v.Get(ctx, client.ObjectKey{Name: nodeGroupName}, nodeGroup); err != nil {
 			return fmt.Errorf("NodeGroup %s not found: %w", nodeGroupName, err)
 		}
 	}

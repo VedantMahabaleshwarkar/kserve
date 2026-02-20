@@ -161,12 +161,14 @@ async def test_vllm_modelnamespacecache():
         constants.KSERVE_PLURAL_LOCALMODELNODE,
         "minikube-m03",
     )
+    # Status key for namespace-scoped models is namespace/modelName
+    status_key = f"{KSERVE_TEST_NAMESPACE}/{model_cache.metadata.name}"
     assert (
-        worker_node_1_cache["status"]["modelStatus"][model_cache.metadata.name]
+        worker_node_1_cache["status"]["modelStatus"][status_key]
         == "ModelDownloaded"
     )
     assert (
-        worker_node_2_cache["status"]["modelStatus"][model_cache.metadata.name]
+        worker_node_2_cache["status"]["modelStatus"][status_key]
         == "ModelDownloaded"
     )
 

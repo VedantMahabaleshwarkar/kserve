@@ -75,7 +75,7 @@ func ExtractLocalModelParams(localModelCache *v1alpha1.LocalModelCache, localMod
 			NodeGroups:         localModelCache.Spec.NodeGroups,
 			ServiceAccountName: localModelCache.Spec.ServiceAccountName,
 			Storage:            localModelCache.Spec.Storage,
-			Finalizers:         localModelCache.ObjectMeta.Finalizers,
+			Finalizers:         localModelCache.Finalizers,
 			FinalizerName:      FinalizerName,
 			IsNamespaceScoped:  false,
 		}
@@ -88,7 +88,7 @@ func ExtractLocalModelParams(localModelCache *v1alpha1.LocalModelCache, localMod
 			NodeGroups:         localModelNamespaceCache.Spec.NodeGroups,
 			ServiceAccountName: localModelNamespaceCache.Spec.ServiceAccountName,
 			Storage:            localModelNamespaceCache.Spec.Storage,
-			Finalizers:         localModelNamespaceCache.ObjectMeta.Finalizers,
+			Finalizers:         localModelNamespaceCache.Finalizers,
 			FinalizerName:      NamespaceCacheFinalizerName,
 			IsNamespaceScoped:  true,
 		}
@@ -250,14 +250,14 @@ func DeleteModelFromNodes(
 	// Remove finalizer
 	if localModelCache != nil {
 		patch := client.MergeFrom(localModelCache.DeepCopy())
-		localModelCache.ObjectMeta.Finalizers = utils.RemoveString(localModelCache.ObjectMeta.Finalizers, params.FinalizerName)
+		localModelCache.Finalizers = utils.RemoveString(localModelCache.Finalizers, params.FinalizerName)
 		if err := c.Patch(ctx, localModelCache, patch); err != nil {
 			log.Error(err, "Cannot remove finalizer", "model name", params.Name)
 			return ctrl.Result{}, err
 		}
 	} else if localModelNamespaceCache != nil {
 		patch := client.MergeFrom(localModelNamespaceCache.DeepCopy())
-		localModelNamespaceCache.ObjectMeta.Finalizers = utils.RemoveString(localModelNamespaceCache.ObjectMeta.Finalizers, params.FinalizerName)
+		localModelNamespaceCache.Finalizers = utils.RemoveString(localModelNamespaceCache.Finalizers, params.FinalizerName)
 		if err := c.Patch(ctx, localModelNamespaceCache, patch); err != nil {
 			log.Error(err, "Cannot remove finalizer", "model name", params.Name)
 			return ctrl.Result{}, err
@@ -461,7 +461,7 @@ func ReconcileForIsvcs(
 	for _, isvc := range isvcs.Items {
 		isvcNames = append(isvcNames, v1alpha1.NamespacedName{Name: isvc.Name, Namespace: isvc.Namespace})
 		// isvc has nodegroup annotation
-		if isvcNodeGroup, ok := isvc.ObjectMeta.Annotations[constants.NodeGroupAnnotationKey]; ok {
+		if isvcNodeGroup, ok := isvc.Annotations[constants.NodeGroupAnnotationKey]; ok {
 			if nodeGroup, ok := localModelNodeGroups[isvcNodeGroup]; ok {
 				if _, ok := namespaceToNodeGroups[isvc.Namespace]; !ok {
 					namespaceToNodeGroups[isvc.Namespace] = map[string]*v1alpha1.LocalModelNodeGroup{}

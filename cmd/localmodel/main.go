@@ -38,6 +38,7 @@ import (
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	localmodelcontroller "github.com/kserve/kserve/pkg/controller/v1alpha1/localmodel"
 	localmodelwebhook "github.com/kserve/kserve/pkg/controller/v1alpha1/localmodel/webhook"
+	localmodelnamespacecachewebhook "github.com/kserve/kserve/pkg/webhook/admission/localmodelnamespacecache"
 )
 
 var setupLog = ctrl.Log.WithName("setup")
@@ -170,6 +171,14 @@ func main() {
 		WithValidator(&localmodelwebhook.LocalModelCacheValidator{Client: mgr.GetClient()}).
 		Complete(); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "LocalModelCache")
+		os.Exit(1)
+	}
+
+	if err = ctrl.NewWebhookManagedBy(mgr).
+		For(&v1alpha1.LocalModelNamespaceCache{}).
+		WithValidator(&localmodelnamespacecachewebhook.LocalModelNamespaceCacheValidator{Client: mgr.GetClient()}).
+		Complete(); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "LocalModelNamespaceCache")
 		os.Exit(1)
 	}
 

@@ -1701,7 +1701,7 @@ func TestDefaultInferenceServiceNormalizesLegacyDeploymentMode(t *testing.T) {
 			},
 		},
 	}
-	isvcRaw.DefaultInferenceService(nil, deployConfig, nil, nil)
+	isvcRaw.DefaultInferenceService(nil, deployConfig, nil, nil, nil)
 	g.Expect(isvcRaw.Annotations[constants.DeploymentMode]).To(gomega.Equal(string(constants.Standard)))
 
 	// Test Serverless -> Knative normalization
@@ -1723,6 +1723,48 @@ func TestDefaultInferenceServiceNormalizesLegacyDeploymentMode(t *testing.T) {
 			},
 		},
 	}
-	isvcServerless.DefaultInferenceService(nil, deployConfig, nil, nil)
+	isvcServerless.DefaultInferenceService(nil, deployConfig, nil, nil, nil)
 	g.Expect(isvcServerless.Annotations[constants.DeploymentMode]).To(gomega.Equal(string(constants.Knative)))
+}
+
+func TestDefaultInferenceServiceWithLocalModelNamespaceCache(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	storageUri := "gs://testbucket/testmodel"
+
+	nsModelCache := &v1alpha1.LocalModelNamespaceCacheList{
+		Items: []v1alpha1.LocalModelNamespaceCache{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-ns-cache",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.LocalModelNamespaceCacheSpec{
+					SourceModelUri: storageUri,
+					ModelSize:      resource.MustParse("1Gi"),
+					NodeGroups:     []string{"gpu"},
+				},
+			},
+		},
+	}
+
+	isvc := InferenceService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-isvc",
+			Namespace: "default",
+		},
+		Spec: InferenceServiceSpec{
+			Predictor: PredictorSpec{
+				Model: &ModelSpec{
+					PredictorExtensionSpec: PredictorExtensionSpec{
+						StorageURI: proto.String(storageUri),
+					},
+				},
+			},
+		},
+	}
+
+	isvc.DefaultInferenceService(nil, nil, nil, nil, nsModelCache)
+
+	g.Expect(isvc.Labels).To(gomega.HaveKeyWithValue(constants.LocalModelLabel, "test-ns-cache"))
+	g.Expect(isvc.Labels).To(gomega.HaveKeyWithValue(constants.LocalModelNamespaceLabel, "default"))
 }
