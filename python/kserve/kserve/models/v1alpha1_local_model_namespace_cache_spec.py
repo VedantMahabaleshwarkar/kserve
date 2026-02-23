@@ -135,7 +135,7 @@ class V1alpha1LocalModelNamespaceCacheSpec(object):
     def service_account_name(self):
         """Gets the service_account_name of this V1alpha1LocalModelNamespaceCacheSpec.  # noqa: E501
 
-        ServiceAccountName specifies the service account to use for credential lookup. The service account should have secrets attached that contain the credentials for accessing the model storage (e.g., HuggingFace token, S3 credentials).  # noqa: E501
+        ServiceAccountName specifies the service account to use for credential lookup.  # noqa: E501
 
         :return: The service_account_name of this V1alpha1LocalModelNamespaceCacheSpec.  # noqa: E501
         :rtype: str
@@ -146,7 +146,7 @@ class V1alpha1LocalModelNamespaceCacheSpec(object):
     def service_account_name(self, service_account_name):
         """Sets the service_account_name of this V1alpha1LocalModelNamespaceCacheSpec.
 
-        ServiceAccountName specifies the service account to use for credential lookup. The service account should have secrets attached that contain the credentials for accessing the model storage (e.g., HuggingFace token, S3 credentials).  # noqa: E501
+        ServiceAccountName specifies the service account to use for credential lookup.  # noqa: E501
 
         :param service_account_name: The service_account_name of this V1alpha1LocalModelNamespaceCacheSpec.  # noqa: E501
         :type: str

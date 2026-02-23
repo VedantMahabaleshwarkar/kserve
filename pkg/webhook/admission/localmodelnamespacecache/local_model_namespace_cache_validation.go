@@ -59,7 +59,6 @@ func (v *LocalModelNamespaceCacheValidator) ValidateCreate(ctx context.Context, 
 	}
 	localModelNamespaceCacheValidatorLogger.Info("validate create", "name", localModelNamespaceCache.Name, "namespace", localModelNamespaceCache.Namespace)
 
-	// Validate node groups exist
 	if err := v.validateNodeGroups(ctx, localModelNamespaceCache); err != nil {
 		return nil, err
 	}
@@ -76,7 +75,6 @@ func (v *LocalModelNamespaceCacheValidator) ValidateUpdate(ctx context.Context, 
 	}
 	localModelNamespaceCacheValidatorLogger.Info("validate update", "name", localModelNamespaceCache.Name, "namespace", localModelNamespaceCache.Namespace)
 
-	// Validate node groups exist
 	if err := v.validateNodeGroups(ctx, localModelNamespaceCache); err != nil {
 		return nil, err
 	}
@@ -105,7 +103,6 @@ func (v *LocalModelNamespaceCacheValidator) ValidateDelete(ctx context.Context, 
 			continue
 		}
 		modelNamespace := isvc.Labels[constants.LocalModelNamespaceLabel]
-		// Check if this ISVC is using this specific namespace-scoped cache
 		if modelName == localModelNamespaceCache.Name && modelNamespace == localModelNamespaceCache.Namespace {
 			return admission.Warnings{}, fmt.Errorf("LocalModelNamespaceCache %s/%s is being used by InferenceService %s/%s",
 				localModelNamespaceCache.Namespace, localModelNamespaceCache.Name, isvcMeta.Namespace, isvcMeta.Name)

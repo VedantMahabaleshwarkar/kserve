@@ -73,7 +73,6 @@ func (c *LocalModelNamespaceCacheReconciler) Reconcile(ctx context.Context, req 
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Get all node groups of the local model
 	defaultNodeGroup := &v1alpha1.LocalModelNodeGroup{}
 	nodeGroups := map[string]*v1alpha1.LocalModelNodeGroup{}
 	for idx, nodeGroupName := range localModel.Spec.NodeGroups {
@@ -155,7 +154,6 @@ func (c *LocalModelNamespaceCacheReconciler) isvcFuncNamespaceCache(ctx context.
 	if modelName, ok = isvc.Labels[constants.LocalModelLabel]; !ok {
 		return []reconcile.Request{}
 	}
-	// Check if it's a namespace-scoped model
 	if modelNamespace, ok = isvc.Labels[constants.LocalModelNamespaceLabel]; !ok {
 		return []reconcile.Request{}
 	}
@@ -247,7 +245,6 @@ func (c *LocalModelNamespaceCacheReconciler) SetupWithManager(mgr ctrl.Manager) 
 	// Index for namespace-scoped models - index by name AND namespace label
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1beta1.InferenceService{}, LocalModelNamespaceKey, func(rawObj client.Object) []string {
 		isvc := rawObj.(*v1beta1.InferenceService)
-		// Only index if both labels exist and namespace matches
 		modelName, hasModel := isvc.GetLabels()[constants.LocalModelLabel]
 		modelNamespace, hasNamespace := isvc.GetLabels()[constants.LocalModelNamespaceLabel]
 		if hasModel && hasNamespace && isvc.Namespace == modelNamespace {
@@ -260,7 +257,6 @@ func (c *LocalModelNamespaceCacheReconciler) SetupWithManager(mgr ctrl.Manager) 
 
 	isvcPredicates := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// Check if namespace label changed
 			oldNsLabel := e.ObjectOld.GetLabels()[constants.LocalModelNamespaceLabel]
 			newNsLabel := e.ObjectNew.GetLabels()[constants.LocalModelNamespaceLabel]
 			return oldNsLabel != newNsLabel

@@ -138,7 +138,6 @@ func TestLocalModelInfo_GetStatusKey_UniqueKeys(t *testing.T) {
 	nsKeyA := nsModelA.GetStatusKey()
 	nsKeyB := nsModelB.GetStatusKey()
 
-	// All three should be different
 	g.Expect(clusterKey).NotTo(gomega.Equal(nsKeyA))
 	g.Expect(clusterKey).NotTo(gomega.Equal(nsKeyB))
 	g.Expect(nsKeyA).NotTo(gomega.Equal(nsKeyB))

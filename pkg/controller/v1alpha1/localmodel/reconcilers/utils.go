@@ -39,7 +39,6 @@ import (
 	"github.com/kserve/kserve/pkg/utils"
 )
 
-// Common constants used by both reconcilers
 var (
 	OwnerKey                    = ".metadata.controller"
 	LocalModelKey               = ".localmodel"
@@ -153,14 +152,12 @@ func StorageSpecEqual(a, b *v1alpha1.LocalModelStorageSpec) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	// Compare StorageKey
 	if (a.StorageKey == nil) != (b.StorageKey == nil) {
 		return false
 	}
 	if a.StorageKey != nil && *a.StorageKey != *b.StorageKey {
 		return false
 	}
-	// Compare Parameters
 	if (a.Parameters == nil) != (b.Parameters == nil) {
 		return false
 	}
@@ -275,7 +272,6 @@ func DeleteModelFromNodes(
 func DeleteModelFromNode(ctx context.Context, c client.Client, log logr.Logger, localModelNode *v1alpha1.LocalModelNode, modelName, namespace string) error {
 	var patch client.Patch
 	for i, modelInfo := range localModelNode.Spec.LocalModels {
-		// Match by name and namespace
 		if modelInfo.ModelName == modelName && modelInfo.Namespace == namespace {
 			patch = client.MergeFrom(localModelNode.DeepCopy())
 			localModelNode.Spec.LocalModels = append(localModelNode.Spec.LocalModels[:i], localModelNode.Spec.LocalModels[i+1:]...)
@@ -294,7 +290,6 @@ func DeletePV(ctx context.Context, clientset *kubernetes.Clientset, log logr.Log
 	persistentVolumes := clientset.CoreV1().PersistentVolumes()
 	if _, err := persistentVolumes.Get(ctx, name, metav1.GetOptions{}); err != nil {
 		if apierr.IsNotFound(err) {
-			// PV doesn't exist, nothing to delete
 			return nil
 		}
 		log.Error(err, "Failed to get PV for deletion", "name", name)
@@ -316,7 +311,6 @@ func DeletePVC(ctx context.Context, clientset *kubernetes.Clientset, log logr.Lo
 	persistentVolumeClaims := clientset.CoreV1().PersistentVolumeClaims(namespace)
 	if _, err := persistentVolumeClaims.Get(ctx, name, metav1.GetOptions{}); err != nil {
 		if apierr.IsNotFound(err) {
-			// PVC doesn't exist, nothing to delete
 			return nil
 		}
 		log.Error(err, "Failed to get PVC for deletion", "name", name, "namespace", namespace)
@@ -355,14 +349,12 @@ func CreatePV(
 		log.Info("Create PV", "name", spec.Name)
 
 		// Set controller reference only for cluster-scoped LocalModelCache
-		// PVs are cluster-scoped, so they cannot be owned by namespace-scoped resources
 		if localModelCache != nil {
 			if err := controllerutil.SetControllerReference(localModelCache, &spec, scheme); err != nil {
 				log.Error(err, "Failed to set controller reference")
 				return err
 			}
 		}
-		// For LocalModelNamespaceCache, we don't set owner reference since PV is cluster-scoped
 
 		if _, err := persistentVolumes.Create(ctx, &spec, metav1.CreateOptions{}); err != nil {
 			log.Error(err, "Failed to create PV", "name", spec.Name)
@@ -392,12 +384,8 @@ func CreatePVC(
 		}
 		log.Info("Create PVC", "name", spec.Name, "namespace", namespace)
 
-		// Set namespace on spec for owner reference check
 		spec.Namespace = namespace
 
-		// Set controller reference based on which type is provided
-		// For LocalModelCache (cluster-scoped), we can set owner reference
-		// For LocalModelNamespaceCache, only set owner reference if the PVC is in the same namespace
 		if localModelCache != nil {
 			if err := controllerutil.SetControllerReference(localModelCache, &spec, scheme); err != nil {
 				log.Error(err, "Set controller reference")
@@ -441,9 +429,7 @@ func ReconcileForIsvcs(
 
 	isvcs := &v1beta1.InferenceServiceList{}
 
-	// List ISVCs based on scope
 	if params.IsNamespaceScoped {
-		// For namespace-scoped, only list ISVCs in the same namespace
 		if err := c.List(ctx, isvcs,
 			client.InNamespace(params.Namespace),
 			client.MatchingFields{LocalModelNamespaceKey: params.Name}); err != nil {
@@ -451,7 +437,6 @@ func ReconcileForIsvcs(
 			return err
 		}
 	} else {
-		// For cluster-scoped, list all ISVCs matching the model
 		if err := c.List(ctx, isvcs, client.MatchingFields{LocalModelKey: params.Name}); err != nil {
 			log.Error(err, "List isvc error")
 			return err
@@ -459,11 +444,9 @@ func ReconcileForIsvcs(
 	}
 
 	isvcNames := []v1alpha1.NamespacedName{}
-	// namespaces with isvcs deployed and their node groups
 	namespaceToNodeGroups := make(map[string]map[string]*v1alpha1.LocalModelNodeGroup)
 	for _, isvc := range isvcs.Items {
 		isvcNames = append(isvcNames, v1alpha1.NamespacedName{Name: isvc.Name, Namespace: isvc.Namespace})
-		// isvc has nodegroup annotation
 		if isvcNodeGroup, ok := isvc.Annotations[constants.NodeGroupAnnotationKey]; ok {
 			if nodeGroup, ok := localModelNodeGroups[isvcNodeGroup]; ok {
 				if _, ok := namespaceToNodeGroups[isvc.Namespace]; !ok {
@@ -496,7 +479,6 @@ func ReconcileForIsvcs(
 		}
 	}
 
-	// Update status with ISVC names
 	if localModelCache != nil {
 		localModelCache.Status.InferenceServices = isvcNames
 		if err := c.Status().Update(ctx, localModelCache); err != nil {
@@ -509,7 +491,6 @@ func ReconcileForIsvcs(
 		}
 	}
 
-	// Determine current namespaces with ISVCs
 	currentNamespaces := make(map[string]bool)
 	for namespace := range namespaceToNodeGroups {
 		currentNamespaces[namespace] = true
@@ -518,22 +499,16 @@ func ReconcileForIsvcs(
 	// Clean up serving PVs/PVCs for namespaces that no longer have ISVCs using this model
 	for namespace := range previousNamespaces {
 		if !currentNamespaces[namespace] {
-			// This namespace no longer has ISVCs using this model, clean up
 			for nodeGroupName := range localModelNodeGroups {
 				pvcName := params.Name + "-" + nodeGroupName
 				pvName := pvcName + "-" + namespace
 
-				// For namespace-scoped models, we need to explicitly delete PVs
-				// For cluster-scoped models, PVs have owner references and will be garbage collected
-				// but we still delete them here for immediate cleanup
 				if params.IsNamespaceScoped {
 					if err := DeletePV(ctx, clientset, log, pvName); err != nil {
 						log.Error(err, "failed to delete serving PV for removed ISVC namespace", "name", pvName)
 					}
 				}
 
-				// Delete PVC - for cluster-scoped models, PVCs have owner references
-				// For namespace-scoped models in other namespaces, they may not have owner references
 				if err := DeletePVC(ctx, clientset, log, pvcName, namespace); err != nil {
 					log.Error(err, "failed to delete serving PVC for removed ISVC namespace", "name", pvcName, "namespace", namespace)
 				}
@@ -589,9 +564,7 @@ func UpdateLocalModelNode(
 	var patch client.Patch
 	updated := false
 	for i, modelInfo := range localModelNode.Spec.LocalModels {
-		// Match by name and namespace
 		if modelInfo.ModelName == params.Name && modelInfo.Namespace == params.Namespace {
-			// Check if any field has changed
 			needsUpdate := modelInfo.SourceModelUri != params.SourceModelUri ||
 				modelInfo.ServiceAccountName != params.ServiceAccountName ||
 				modelInfo.NodeGroup != nodeGroupName ||
@@ -599,7 +572,6 @@ func UpdateLocalModelNode(
 			if !needsUpdate {
 				return nil
 			}
-			// Update the local model info
 			log.Info("Updating localModelInfo", "node", localModelNode.Name, "model", params.Name, "namespace", params.Namespace)
 			updated = true
 			patch = client.MergeFrom(localModelNode.DeepCopy())
@@ -630,7 +602,6 @@ func ReconcileLocalModelNode(
 ) error {
 	params := ExtractLocalModelParams(localModelCache, localModelNamespaceCache)
 
-	// Get or initialize NodeStatus map
 	var nodeStatus map[string]v1alpha1.NodeStatus
 	if localModelCache != nil {
 		if localModelCache.Status.NodeStatus == nil {
@@ -645,8 +616,6 @@ func ReconcileLocalModelNode(
 	}
 
 	for nodeGroupName, nodeGroup := range nodeGroups {
-		// Create modelInfo inside the loop with the correct nodeGroupName
-		// This ensures the agent knows which nodegroup the model belongs to
 		modelInfo := CreateLocalModelInfo(localModelCache, localModelNamespaceCache, nodeGroupName)
 		statusKey := modelInfo.GetStatusKey()
 		readyNodes, notReadyNodes, err := GetNodesFromNodeGroup(ctx, nodeGroup, c)
@@ -690,7 +659,6 @@ func ReconcileLocalModelNode(
 					return err
 				}
 			}
-			// Use status key to look up status
 			modelStatus := localModelNode.Status.ModelStatus[statusKey]
 			nodeStatus[node.Name] = NodeStatusFromLocalModelStatus(modelStatus)
 		}
@@ -706,7 +674,6 @@ func ReconcileLocalModelNode(
 			}
 		}
 
-		// Update status
 		modelCopies := &v1alpha1.ModelCopies{Total: len(nodeStatus), Available: successfulNodes, Failed: failedNodes}
 		if localModelCache != nil {
 			localModelCache.Status.ModelCopies = modelCopies

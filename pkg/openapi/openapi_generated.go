@@ -1191,15 +1191,14 @@ func schema_pkg_apis_serving_v1alpha1_LocalModelCacheSpec(ref common.ReferenceCa
 					},
 					"serviceAccountName": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ServiceAccountName specifies the service account to use for credential lookup. The service account should have secrets attached that contain the credentials for accessing the model storage (e.g., HuggingFace token, S3 credentials).",
+							Description: "ServiceAccountName specifies the service account to use for credential lookup.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"storage": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Storage configuration for credentials and storage parameters.",
-							Ref:         ref("github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec"),
+							Ref: ref("github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec"),
 						},
 					},
 				},
@@ -1345,15 +1344,14 @@ func schema_pkg_apis_serving_v1alpha1_LocalModelNamespaceCacheSpec(ref common.Re
 					},
 					"serviceAccountName": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ServiceAccountName specifies the service account to use for credential lookup. The service account should have secrets attached that contain the credentials for accessing the model storage (e.g., HuggingFace token, S3 credentials).",
+							Description: "ServiceAccountName specifies the service account to use for credential lookup.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"storage": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Storage configuration for credentials and storage parameters.",
-							Ref:         ref("github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec"),
+							Ref: ref("github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec"),
 						},
 					},
 				},

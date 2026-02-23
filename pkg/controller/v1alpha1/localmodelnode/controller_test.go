@@ -186,7 +186,6 @@ var _ = Describe("LocalModelNode controller", func() {
 		It("Should create download jobs, update model status from jobs, and handle model deletion", func() {
 			ctx := context.Background()
 			fsMock.clear()
-			// Use storage key (hash of URI) for folder name, as the controller does
 			storageKey := v1alpha1.GetStorageKey(sourceModelUri)
 			fsMock.mockModel(&MockFileInfo{name: storageKey, isDir: true})
 			configMap := &corev1.ConfigMap{
@@ -296,7 +295,6 @@ var _ = Describe("LocalModelNode controller", func() {
 		})
 		It("Should recreate download jobs if the model is missing from local disk", func() {
 			fsMock.clear()
-			// Use storage key (hash of URI) for folder name
 			storageKey := v1alpha1.GetStorageKey(sourceModelUri)
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
@@ -417,8 +415,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(context.TODO(), configMap)).NotTo(HaveOccurred())
 			defer k8sClient.Delete(context.TODO(), configMap)
 
-			// Mock readDir to return a fake model folder with a storage key-like name
-			// Since the LocalModelNode has no models in the spec, any folder should be deleted
 			orphanedStorageKey := "abc123def456"
 			fsMock.mockModel(&MockFileInfo{name: orphanedStorageKey, isDir: true})
 
@@ -471,7 +467,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 			fsMock.clear()
-			// Use storage key (hash of URI) for folder name
 			storageKey := v1alpha1.GetStorageKey(sourceModelUri)
 			configMap := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
@@ -483,7 +478,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
 			defer k8sClient.Delete(ctx, configMap)
 
-			// Mock readDir to return a fake model folder using storage key
 			fsMock.mockModel(&MockFileInfo{name: storageKey, isDir: true})
 
 			nodeGroup := &v1alpha1.LocalModelNodeGroup{
@@ -576,7 +570,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
 			defer k8sClient.Delete(ctx, configMap)
 
-			// Create a service account
 			serviceAccountName := "model-downloader"
 			serviceAccount := &corev1.ServiceAccount{
 				ObjectMeta: metav1.ObjectMeta{
@@ -616,7 +609,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Create LocalModelNode with serviceAccountName set
 			localModelNode := &v1alpha1.LocalModelNode{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: nodeName,
@@ -708,7 +700,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Create LocalModelNode with storage key set
 			storageKey := "my-s3-credentials"
 			localModelNode := &v1alpha1.LocalModelNode{
 				ObjectMeta: metav1.ObjectMeta{
@@ -746,7 +737,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			DeferCleanup(cancel)
 			fsMock.clear()
 
-			// Create test namespace for the namespace-scoped model
 			modelNamespace := fmt.Sprintf("test-model-ns-%d", time.Now().UnixNano())
 			testNs := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -807,7 +797,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Create LocalModelNode with namespace-scoped model (Namespace field set)
 			nsModelName := "ns-llama"
 			localModelNode := &v1alpha1.LocalModelNode{
 				ObjectMeta: metav1.ObjectMeta{
@@ -826,7 +815,7 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
 			defer k8sClient.Delete(ctx, localModelNode)
 
-			// Wait for the download job to be created IN THE MODEL'S NAMESPACE
+			// Wait for the download job to be created
 			jobs := &batchv1.JobList{}
 			labelSelector := map[string]string{
 				"model":          nsModelName,
@@ -834,12 +823,10 @@ var _ = Describe("LocalModelNode controller", func() {
 				"modelNamespace": modelNamespace,
 			}
 			Eventually(func() bool {
-				// Job should be in the model's namespace, not the default jobNamespace
 				err := k8sClient.List(ctx, jobs, client.InNamespace(modelNamespace), client.MatchingLabels(labelSelector))
 				return err == nil && len(jobs.Items) == 1
 			}, timeout, interval).Should(BeTrue(), "Download job should be created in the model's namespace")
 
-			// Verify job labels include modelNamespace
 			job := &jobs.Items[0]
 			Expect(job.Labels["modelNamespace"]).To(Equal(modelNamespace))
 			Expect(job.Labels["model"]).To(Equal(nsModelName))
@@ -850,7 +837,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			DeferCleanup(cancel)
 			fsMock.clear()
 
-			// Create test namespace
 			modelNamespace := fmt.Sprintf("test-status-ns-%d", time.Now().UnixNano())
 			testNs := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -911,7 +897,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Create LocalModelNode with namespace-scoped model
 			nsModelName := "ns-status-model"
 			storageKey := v1alpha1.GetStorageKey(sourceModelUri)
 			fsMock.mockModel(&MockFileInfo{name: storageKey, isDir: true})
@@ -949,14 +934,12 @@ var _ = Describe("LocalModelNode controller", func() {
 			job.Status.Succeeded = 1
 			Expect(k8sClient.Status().Update(ctx, job)).Should(Succeed())
 
-			// Verify status uses namespace/modelName as key
 			expectedStatusKey := modelNamespace + "/" + nsModelName
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: nodeName}, localModelNode)
 				if err != nil {
 					return false
 				}
-				// Status key should be namespace/modelName for namespace-scoped models
 				modelStatus, ok := localModelNode.Status.ModelStatus[expectedStatusKey]
 				if !ok {
 					fmt.Fprintf(GinkgoWriter, "Status keys: %v\n", localModelNode.Status.ModelStatus)
@@ -994,7 +977,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			defer k8sClient.Delete(ctx, configMap)
 
 			// Create two nodegroups with SAME node affinity (overlapping)
-			// This simulates the bug where getNodeGroupFromNode returns the wrong one
 			overlappingNodeAffinity := &corev1.VolumeNodeAffinity{
 				Required: &corev1.NodeSelector{
 					NodeSelectorTerms: []corev1.NodeSelectorTerm{
@@ -1041,7 +1023,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, qwenNodeGroup)).Should(Succeed())
 			defer k8sClient.Delete(ctx, qwenNodeGroup)
 
-			// Second nodegroup - sklearn-nodegroup (the correct one for our model)
 			sklearnNodeGroupSpec := v1alpha1.LocalModelNodeGroupSpec{
 				PersistentVolumeSpec: corev1.PersistentVolumeSpec{
 					AccessModes:                   []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -1091,8 +1072,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Create LocalModelNode with a model that explicitly belongs to sklearn-nodegroup
-			// The NodeGroup field tells the agent which nodegroup to use for PVC name
 			sklearnModelName := "sklearn-model"
 			localModelNode := &v1alpha1.LocalModelNode{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1123,12 +1102,10 @@ var _ = Describe("LocalModelNode controller", func() {
 			}, timeout, interval).Should(BeTrue(), "Download job should be created")
 
 			// Verify the job uses the CORRECT PVC name (sklearn-model-sklearn-nodegroup)
-			// NOT the wrong one (sklearn-model-qwen-nodegroup) that getNodeGroupFromNode would return
 			job := &jobs.Items[0]
 			Expect(job.Spec.Template.Spec.Volumes).To(HaveLen(1))
 			pvcVolume := job.Spec.Template.Spec.Volumes[0]
 			Expect(pvcVolume.PersistentVolumeClaim).NotTo(BeNil())
-			// The PVC name should use sklearn-nodegroup (from modelInfo.NodeGroup), not qwen-nodegroup
 			Expect(pvcVolume.PersistentVolumeClaim.ClaimName).To(Equal("sklearn-model-sklearn-nodegroup"),
 				"PVC name should use NodeGroup from modelInfo, not the first matching nodegroup from getNodeGroupFromNode")
 		})
@@ -1138,7 +1115,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			DeferCleanup(cancel)
 			fsMock.clear()
 
-			// Create test namespace
 			modelNamespace := fmt.Sprintf("test-mixed-ns-%d", time.Now().UnixNano())
 			testNs := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1199,13 +1175,11 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Create LocalModelNode with both cluster-scoped and namespace-scoped models
 			clusterModelName := "cluster-model"
 			nsModelName := "ns-model"
 			clusterUri := "s3://bucket/cluster-model"
 			nsUri := "s3://bucket/ns-model"
 
-			// Mock both model folders (using storage keys)
 			clusterStorageKey := v1alpha1.GetStorageKey(clusterUri)
 			nsStorageKey := v1alpha1.GetStorageKey(nsUri)
 			fsMock.mockModel(&MockFileInfo{name: clusterStorageKey, isDir: true})
@@ -1263,7 +1237,6 @@ var _ = Describe("LocalModelNode controller", func() {
 			nsJob.Status.Succeeded = 1
 			Expect(k8sClient.Status().Update(ctx, nsJob)).Should(Succeed())
 
-			// Verify status has separate entries for both models
 			expectedClusterKey := clusterModelName              // Cluster-scoped uses just modelName
 			expectedNsKey := modelNamespace + "/" + nsModelName // Namespace-scoped uses namespace/modelName
 			Eventually(func() bool {
@@ -1271,18 +1244,15 @@ var _ = Describe("LocalModelNode controller", func() {
 				if err != nil {
 					return false
 				}
-				// Should have 2 status entries
 				if len(localModelNode.Status.ModelStatus) != 2 {
 					fmt.Fprintf(GinkgoWriter, "Status entries: %d, expected 2\n", len(localModelNode.Status.ModelStatus))
 					return false
 				}
-				// Check cluster-scoped model status
 				clusterStatus, ok := localModelNode.Status.ModelStatus[expectedClusterKey]
 				if !ok || clusterStatus != v1alpha1.ModelDownloaded {
 					fmt.Fprintf(GinkgoWriter, "Cluster status missing or not downloaded\n")
 					return false
 				}
-				// Check namespace-scoped model status
 				nsStatus, ok := localModelNode.Status.ModelStatus[expectedNsKey]
 				if !ok || nsStatus != v1alpha1.ModelDownloaded {
 					fmt.Fprintf(GinkgoWriter, "Namespace status missing or not downloaded\n")

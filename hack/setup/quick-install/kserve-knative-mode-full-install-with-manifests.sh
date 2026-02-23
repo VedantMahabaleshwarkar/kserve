@@ -41738,6 +41738,9 @@ spec:
                             - targetPortNumber
                             type: object
                         type: object
+                      replicas:
+                        format: int32
+                        type: integer
                       template:
                         properties:
                           activeDeadlineSeconds:
@@ -62277,6 +62280,9 @@ spec:
                             - targetPorts
                             type: object
                         type: object
+                      replicas:
+                        format: int32
+                        type: integer
                       template:
                         properties:
                           activeDeadlineSeconds:
@@ -82909,6 +82915,9 @@ spec:
                             - targetPortNumber
                             type: object
                         type: object
+                      replicas:
+                        format: int32
+                        type: integer
                       template:
                         properties:
                           activeDeadlineSeconds:
@@ -103605,6 +103614,9 @@ spec:
                             - targetPorts
                             type: object
                         type: object
+                      replicas:
+                        format: int32
+                        type: integer
                       template:
                         properties:
                           activeDeadlineSeconds:
@@ -204465,6 +204477,7 @@ rules:
   - serving.kserve.io
   resources:
   - localmodelcaches
+  - localmodelnamespacecaches
   verbs:
   - get
   - list
