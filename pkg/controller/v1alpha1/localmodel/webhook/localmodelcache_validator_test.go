@@ -191,8 +191,6 @@ func TestValidateUpdate_InvalidObjectType(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring("expected *v1alpha1.LocalModelCache"))
 }
 
-// ==================== LocalModelNamespaceCache Tests ====================
-
 func makeTestLocalModelNamespaceCache() v1alpha1.LocalModelNamespaceCache {
 	return v1alpha1.LocalModelNamespaceCache{
 		ObjectMeta: metav1.ObjectMeta{

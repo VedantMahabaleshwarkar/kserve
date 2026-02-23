@@ -774,7 +774,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 
-			// Create test namespace with unique name
 			testNamespace := fmt.Sprintf("test-ns-cache-%d", time.Now().UnixNano())
 			namespaceObj := createTestNamespace(ctx, testNamespace)
 			defer k8sClient.Delete(ctx, namespaceObj)
@@ -800,7 +799,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			defer k8sClient.Delete(ctx, cachedModel)
 
 			modelLookupKey := types.NamespacedName{Name: modelName, Namespace: testNamespace}
-			// Download PV/PVC includes namespace and -download suffix
 			pvLookupKey1 := types.NamespacedName{Name: modelName + "-gpu1-" + testNamespace + "-download"}
 			pvcLookupKey1 := types.NamespacedName{Name: modelName + "-gpu1-download", Namespace: testNamespace}
 
@@ -852,7 +850,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			// For namespace-scoped models, the LocalModelInfo should include the namespace and nodegroup
 			expectedModelInfo := v1alpha1.LocalModelInfo{
 				ModelName:      modelName,
 				SourceModelUri: sourceModelUri,
@@ -861,8 +858,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			}
 			Expect(localModelNode1.Spec.LocalModels).Should(ContainElement(expectedModelInfo))
 
-			// Update the LocalModelNode status to be successful
-			// For namespace-scoped models, the status key is namespace/modelName
 			statusKey := testNamespace + "/" + modelName
 			localModelNode1.Status.ModelStatus = map[string]v1alpha1.ModelStatus{statusKey: v1alpha1.ModelDownloaded}
 			Expect(k8sClient.Status().Update(ctx, localModelNode1)).Should(Succeed())
@@ -890,7 +885,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 
-			// Create test namespaces with unique names
 			testNamespace := fmt.Sprintf("test-ns-isvc-%d", time.Now().UnixNano())
 			otherNamespace := fmt.Sprintf("other-ns-%d", time.Now().UnixNano())
 			namespaceObj := createTestNamespace(ctx, testNamespace)
@@ -918,7 +912,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, cachedModel)).Should(Succeed())
 			defer k8sClient.Delete(ctx, cachedModel)
 
-			// Create ISVC in the same namespace - should be associated with the cache
 			isvcName1 := "ns-foo"
 			isvc1 := &v1beta1.InferenceService{
 				ObjectMeta: metav1.ObjectMeta{
@@ -941,7 +934,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				},
 			}
 
-			// Create ISVC in a different namespace - should NOT be associated with the cache
 			isvcName2 := "ns-bar"
 			isvc2 := &v1beta1.InferenceService{
 				ObjectMeta: metav1.ObjectMeta{
@@ -969,14 +961,12 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, isvc2)).Should(Succeed())
 			defer k8sClient.Delete(ctx, isvc2)
 
-			// Wait for isvc1 to be created
 			inferenceService1 := &v1beta1.InferenceService{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: isvcName1, Namespace: testNamespace}, inferenceService1)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			// Expects PV and PVC are created in the same namespace as the cache
 			pvLookupKey := types.NamespacedName{Name: modelName + "-gpu1-" + testNamespace}
 			pvcLookupKey := types.NamespacedName{Name: modelName + "-gpu1", Namespace: testNamespace}
 
@@ -992,18 +982,15 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return err == nil && persistentVolumeClaim != nil
 			}, timeout, interval).Should(BeTrue(), "Serving PVC should be created for ISVC in same namespace")
 
-			// Verify status only includes ISVC from the same namespace
 			modelLookupKey := types.NamespacedName{Name: modelName, Namespace: testNamespace}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, modelLookupKey, cachedModel)
 				if err != nil {
 					return false
 				}
-				// Should only have 1 ISVC (from the same namespace)
 				if len(cachedModel.Status.InferenceServices) != 1 {
 					return false
 				}
-				// The ISVC should be from testNamespace
 				return cachedModel.Status.InferenceServices[0].Name == isvcName1 &&
 					cachedModel.Status.InferenceServices[0].Namespace == testNamespace
 			}, timeout, interval).Should(BeTrue(), "Status should only include ISVC from the same namespace")
@@ -1014,7 +1001,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 
-			// Create test namespace with unique name
 			testNamespace := fmt.Sprintf("test-ns-delete-%d", time.Now().UnixNano())
 			namespaceObj := createTestNamespace(ctx, testNamespace)
 			defer k8sClient.Delete(ctx, namespaceObj)
@@ -1039,7 +1025,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, cachedModel)).Should(Succeed())
 
 			modelLookupKey := types.NamespacedName{Name: modelName, Namespace: testNamespace}
-			// Download PVC includes -download suffix
 			pvcLookupKey := types.NamespacedName{Name: modelName + "-gpu1-download", Namespace: testNamespace}
 
 			// Wait for the model to be created with finalizer
@@ -1048,7 +1033,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				if err != nil {
 					return false
 				}
-				// Verify finalizer is added
 				for _, f := range cachedModel.ObjectMeta.Finalizers {
 					if f == "localmodelnamespacecache.kserve.io/finalizer" {
 						return true
@@ -1057,7 +1041,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue(), "LocalModelNamespaceCache should have finalizer")
 
-			// Wait for the download PVC to be created
 			persistentVolumeClaim := &corev1.PersistentVolumeClaim{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, pvcLookupKey, persistentVolumeClaim)
@@ -1067,8 +1050,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			// Now delete the LocalModelNamespaceCache
 			Expect(k8sClient.Delete(ctx, cachedModel)).Should(Succeed())
 
-			// Wait for the model to be fully deleted (finalizer must have run to remove itself)
-			// This proves the cleanup code was executed
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, modelLookupKey, cachedModel)
 				return err != nil && errors.IsNotFound(err)
@@ -1085,7 +1066,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 
-			// Create test namespace with unique name
 			testNamespace := fmt.Sprintf("test-ns-mixed-%d", time.Now().UnixNano())
 			namespaceObj := createTestNamespace(ctx, testNamespace)
 			defer k8sClient.Delete(ctx, namespaceObj)
@@ -1099,7 +1079,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, nodeGroup1)).Should(Succeed())
 			defer k8sClient.Delete(ctx, nodeGroup1)
 
-			// Create cluster-scoped LocalModelCache
 			clusterModelName := "cluster-model"
 			clusterModel := &v1alpha1.LocalModelCache{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1114,7 +1093,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, clusterModel)).Should(Succeed())
 			defer k8sClient.Delete(ctx, clusterModel)
 
-			// Create namespace-scoped LocalModelNamespaceCache
 			nsModelName := "ns-model"
 			nsModel := &v1alpha1.LocalModelNamespaceCache{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1126,7 +1104,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, nsModel)).Should(Succeed())
 			defer k8sClient.Delete(ctx, nsModel)
 
-			// Create a node
 			nodeName := "mixed-node"
 			node := &corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1147,18 +1124,15 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
 			defer k8sClient.Delete(ctx, node)
 
-			// Verify LocalModelNode has both models
 			localModelNode := &v1alpha1.LocalModelNode{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: nodeName}, localModelNode)
 				if err != nil {
 					return false
 				}
-				// Should have 2 models
 				return len(localModelNode.Spec.LocalModels) == 2
 			}, timeout, interval).Should(BeTrue(), "LocalModelNode should have both cluster and namespace models")
 
-			// Verify the cluster-scoped model has empty namespace but has nodegroup
 			clusterModelInfo := v1alpha1.LocalModelInfo{
 				ModelName:      clusterModelName,
 				SourceModelUri: sourceModelUri,
@@ -1167,7 +1141,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			}
 			Expect(localModelNode.Spec.LocalModels).Should(ContainElement(clusterModelInfo))
 
-			// Verify the namespace-scoped model has the namespace and nodegroup set
 			nsModelInfo := v1alpha1.LocalModelInfo{
 				ModelName:      nsModelName,
 				SourceModelUri: sourceModelUri,
@@ -1182,7 +1155,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 
-			// Create test namespace with unique name
 			testNamespace := fmt.Sprintf("test-ns-pv-delete-%d", time.Now().UnixNano())
 			namespaceObj := createTestNamespace(ctx, testNamespace)
 			defer k8sClient.Delete(ctx, namespaceObj)
@@ -1208,7 +1180,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			defer k8sClient.Delete(ctx, cachedModel)
 
 			modelLookupKey := types.NamespacedName{Name: modelName, Namespace: testNamespace}
-			// Download PV includes namespace and -download suffix
 			downloadPVLookupKey := types.NamespacedName{Name: modelName + "-gpu1-" + testNamespace + "-download"}
 
 			// Wait for the model to be created with finalizer
@@ -1217,7 +1188,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				if err != nil {
 					return false
 				}
-				// Verify finalizer is added
 				for _, f := range cachedModel.ObjectMeta.Finalizers {
 					if f == "localmodelnamespacecache.kserve.io/finalizer" {
 						return true
@@ -1248,7 +1218,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
 
-			// Create test namespace with unique name
 			testNamespace := fmt.Sprintf("test-ns-cleanup-%d", time.Now().UnixNano())
 			namespaceObj := createTestNamespace(ctx, testNamespace)
 			defer k8sClient.Delete(ctx, namespaceObj)
@@ -1273,7 +1242,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, cachedModel)).Should(Succeed())
 			defer k8sClient.Delete(ctx, cachedModel)
 
-			// Create ISVC in the same namespace
 			isvcName := "cleanup-isvc"
 			isvc := &v1beta1.InferenceService{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1299,7 +1267,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			Expect(k8sClient.Create(ctx, isvc)).Should(Succeed())
 			defer k8sClient.Delete(ctx, isvc)
 
-			// Wait for ISVC to be created
 			inferenceService := &v1beta1.InferenceService{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: isvcName, Namespace: testNamespace}, inferenceService)
@@ -1322,7 +1289,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return err == nil && servingPV != nil
 			}, timeout, interval).Should(BeTrue(), "Serving PV should be created for ISVC")
 
-			// Verify the cache status shows the ISVC
 			modelLookupKey := types.NamespacedName{Name: modelName, Namespace: testNamespace}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, modelLookupKey, cachedModel)
@@ -1332,7 +1298,6 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return len(cachedModel.Status.InferenceServices) == 1
 			}, timeout, interval).Should(BeTrue(), "Cache status should show the ISVC")
 
-			// Verify the ISVC is in the status
 			Expect(cachedModel.Status.InferenceServices[0].Name).To(Equal(isvcName))
 			Expect(cachedModel.Status.InferenceServices[0].Namespace).To(Equal(testNamespace))
 

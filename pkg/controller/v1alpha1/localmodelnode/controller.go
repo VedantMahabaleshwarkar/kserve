@@ -114,7 +114,6 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 	jobName := modelInfo.ModelName + "-" + localModelNode.Name
 
 	// Use NodeGroup from modelInfo if set, otherwise fall back to getNodeGroupFromNode
-	// This fixes the bug where overlapping nodegroups cause the wrong PVC name to be used
 	nodeGroupName := modelInfo.NodeGroup
 	if nodeGroupName == "" {
 		nodeGroup, err := c.getNodeGroupFromNode(ctx, nodeName)
@@ -154,7 +153,6 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 		},
 	}
 
-	// Initialize volumes with the PVC volume
 	volumes := []corev1.Volume{
 		{
 			Name: PvcSourceMountName,
@@ -172,7 +170,6 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 		jobNs = modelInfo.Namespace
 	}
 
-	// Inject credentials based on modelInfo configuration
 	// Only inject if credentials are explicitly configured in LocalModelCache
 	if modelInfo.ServiceAccountName != "" || modelInfo.Storage != nil {
 		if err := c.injectCredentials(ctx, container, &volumes, modelInfo, jobNs); err != nil {
@@ -181,7 +178,6 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 		}
 	}
 
-	// Build job labels - include namespace for namespace-scoped models
 	// Note: statusKey (namespace/modelName) cannot be used as a label value since labels
 	// cannot contain '/'. We store namespace separately and reconstruct statusKey when needed.
 	jobLabels := map[string]string{
@@ -241,7 +237,6 @@ func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.S
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 	}
 
-	// Set resource limits/requests from config if available
 	if config != nil {
 		cpuLimit, err := resource.ParseQuantity(config.CpuLimit)
 		if err != nil {
@@ -274,7 +269,7 @@ func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.S
 	return container, nil
 }
 
-// injectCredentials injects credentials into the container based on the modelInfo configuration
+// injectCredentials injects storage credentials into the download container.
 func (c *LocalModelNodeReconciler) injectCredentials(ctx context.Context, container *corev1.Container,
 	volumes *[]corev1.Volume, modelInfo v1alpha1.LocalModelInfo, jobNs string,
 ) error {
@@ -342,7 +337,6 @@ func (c *LocalModelNodeReconciler) getLatestJob(ctx context.Context, modelInfo v
 		labelSelector["modelNamespace"] = modelInfo.Namespace
 	}
 
-	// Determine the namespace to search for jobs
 	jobNs := jobNamespace
 	if modelInfo.Namespace != "" {
 		jobNs = modelInfo.Namespace
@@ -530,7 +524,6 @@ func (c *LocalModelNodeReconciler) cleanupJobs(ctx context.Context, localModelNo
 		}
 	}
 
-	// Search for jobs in all relevant namespaces
 	for ns := range namespacesInSpec {
 		jobs := &batchv1.JobList{}
 		labelSelector := map[string]string{"node": localModelNode.Name}
@@ -618,14 +611,12 @@ func (c *LocalModelNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		jobTTLSecondsAfterFinished = *localModelConfig.JobTTLSecondsAfterFinished
 	}
 
-	// Load StorageInitializerConfig for container spec
 	storageInitializerConfig, err = v1beta1.GetStorageInitializerConfigs(isvcConfigMap)
 	if err != nil {
 		c.Log.Error(err, "Failed to get storage initializer config, using defaults")
 		// Don't fail, just use defaults
 	}
 
-	// Initialize CredentialBuilder if not already initialized
 	if c.CredentialBuilder == nil {
 		c.CredentialBuilder = credentials.NewCredentialBuilder(c.Client, c.Clientset, isvcConfigMap)
 	}

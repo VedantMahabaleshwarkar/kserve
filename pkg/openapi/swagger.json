@@ -599,7 +599,7 @@
           }
         },
         "serviceAccountName": {
-          "description": "ServiceAccountName specifies the service account to use for credential lookup. The service account should have secrets attached that contain the credentials for accessing the model storage (e.g., HuggingFace token, S3 credentials).",
+          "description": "ServiceAccountName specifies the service account to use for credential lookup.",
           "type": "string"
         },
         "sourceModelUri": {
@@ -608,7 +608,6 @@
           "default": ""
         },
         "storage": {
-          "description": "Storage configuration for credentials and storage parameters.",
           "$ref": "#/definitions/v1alpha1.LocalModelStorageSpec"
         }
       }
@@ -689,7 +688,7 @@
           }
         },
         "serviceAccountName": {
-          "description": "ServiceAccountName specifies the service account to use for credential lookup. The service account should have secrets attached that contain the credentials for accessing the model storage (e.g., HuggingFace token, S3 credentials).",
+          "description": "ServiceAccountName specifies the service account to use for credential lookup.",
           "type": "string"
         },
         "sourceModelUri": {
@@ -698,7 +697,6 @@
           "default": ""
         },
         "storage": {
-          "description": "Storage configuration for credentials and storage parameters.",
           "$ref": "#/definitions/v1alpha1.LocalModelStorageSpec"
         }
       }

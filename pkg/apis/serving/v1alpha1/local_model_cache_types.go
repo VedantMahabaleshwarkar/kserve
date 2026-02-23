@@ -55,11 +55,8 @@ type LocalModelCacheSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	NodeGroups []string `json:"nodeGroups" validate:"required"`
 	// ServiceAccountName specifies the service account to use for credential lookup.
-	// The service account should have secrets attached that contain the credentials
-	// for accessing the model storage (e.g., HuggingFace token, S3 credentials).
 	// +optional
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
-	// Storage configuration for credentials and storage parameters.
 	// +optional
 	Storage *LocalModelStorageSpec `json:"storage,omitempty"`
 }

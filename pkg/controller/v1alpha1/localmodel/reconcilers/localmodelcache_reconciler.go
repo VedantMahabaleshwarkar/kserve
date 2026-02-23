@@ -73,7 +73,6 @@ func (c *LocalModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Get all node groups of the local model
 	defaultNodeGroup := &v1alpha1.LocalModelNodeGroup{}
 	nodeGroups := map[string]*v1alpha1.LocalModelNodeGroup{}
 	for idx, nodeGroupName := range localModel.Spec.NodeGroups {
@@ -272,7 +271,6 @@ func (c *LocalModelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	nodePredicates := NodeReadyPredicate()
 
-	// Define predicates to filter events based on changes to the status field
 	localModelNodePredicates := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldNode := e.ObjectOld.(*v1alpha1.LocalModelNode)
@@ -280,22 +278,18 @@ func (c *LocalModelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return !reflect.DeepEqual(oldNode.Status, newNode.Status)
 		},
 		CreateFunc: func(e event.CreateEvent) bool {
-			// Do nothing on create
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			// Do nothing on delete
 			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			// Do nothing on generic events
 			return false
 		},
 	}
 
 	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.LocalModelCache{}).
-		// Ownes PersistentVolumes and PersistentVolumeClaims that is created by this local model controller
 		Owns(&corev1.PersistentVolume{}).
 		Owns(&corev1.PersistentVolumeClaim{})
 
