@@ -115452,6 +115452,8 @@ spec:
                       type: string
                     namespace:
                       type: string
+                    nodeGroup:
+                      type: string
                     serviceAccountName:
                       type: string
                     sourceModelUri:
@@ -203289,6 +203291,8 @@ spec:
                     modelName:
                       type: string
                     namespace:
+                      type: string
+                    nodeGroup:
                       type: string
                     serviceAccountName:
                       type: string

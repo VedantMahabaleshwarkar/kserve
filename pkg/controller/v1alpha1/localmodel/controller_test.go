@@ -275,13 +275,13 @@ var _ = Describe("CachedModel controller", func() {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: nodeName1}, localModelNode1)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(localModelNode1.Spec.LocalModels).Should(ContainElement(v1alpha1.LocalModelInfo{ModelName: cachedModel.Name, SourceModelUri: sourceModelUri}))
+			Expect(localModelNode1.Spec.LocalModels).Should(ContainElement(v1alpha1.LocalModelInfo{ModelName: cachedModel.Name, SourceModelUri: sourceModelUri, NodeGroup: "gpu1"}))
 			localModelNode2 := &v1alpha1.LocalModelNode{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: nodeName2}, localModelNode2)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(localModelNode2.Spec.LocalModels).Should(ContainElement(v1alpha1.LocalModelInfo{ModelName: cachedModel.Name, SourceModelUri: sourceModelUri}))
+			Expect(localModelNode2.Spec.LocalModels).Should(ContainElement(v1alpha1.LocalModelInfo{ModelName: cachedModel.Name, SourceModelUri: sourceModelUri, NodeGroup: "gpu2"}))
 
 			// Todo: Test agent download
 			// Update the LocalModelNode status to be successful
@@ -852,11 +852,12 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			// For namespace-scoped models, the LocalModelInfo should include the namespace
+			// For namespace-scoped models, the LocalModelInfo should include the namespace and nodegroup
 			expectedModelInfo := v1alpha1.LocalModelInfo{
 				ModelName:      modelName,
 				SourceModelUri: sourceModelUri,
 				Namespace:      testNamespace,
+				NodeGroup:      "gpu1",
 			}
 			Expect(localModelNode1.Spec.LocalModels).Should(ContainElement(expectedModelInfo))
 
@@ -1157,19 +1158,21 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 				return len(localModelNode.Spec.LocalModels) == 2
 			}, timeout, interval).Should(BeTrue(), "LocalModelNode should have both cluster and namespace models")
 
-			// Verify the cluster-scoped model has empty namespace
+			// Verify the cluster-scoped model has empty namespace but has nodegroup
 			clusterModelInfo := v1alpha1.LocalModelInfo{
 				ModelName:      clusterModelName,
 				SourceModelUri: sourceModelUri,
 				Namespace:      "", // Empty for cluster-scoped
+				NodeGroup:      "gpu1",
 			}
 			Expect(localModelNode.Spec.LocalModels).Should(ContainElement(clusterModelInfo))
 
-			// Verify the namespace-scoped model has the namespace set
+			// Verify the namespace-scoped model has the namespace and nodegroup set
 			nsModelInfo := v1alpha1.LocalModelInfo{
 				ModelName:      nsModelName,
 				SourceModelUri: sourceModelUri,
 				Namespace:      testNamespace,
+				NodeGroup:      "gpu1",
 			}
 			Expect(localModelNode.Spec.LocalModels).Should(ContainElement(nsModelInfo))
 		})

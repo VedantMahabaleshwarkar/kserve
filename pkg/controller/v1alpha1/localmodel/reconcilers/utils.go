@@ -97,12 +97,15 @@ func ExtractLocalModelParams(localModelCache *v1alpha1.LocalModelCache, localMod
 }
 
 // CreateLocalModelInfo creates a LocalModelInfo from either LocalModelCache or LocalModelNamespaceCache
-func CreateLocalModelInfo(localModelCache *v1alpha1.LocalModelCache, localModelNamespaceCache *v1alpha1.LocalModelNamespaceCache) v1alpha1.LocalModelInfo {
+// nodeGroupName specifies which LocalModelNodeGroup this model belongs to, used by the agent
+// to construct the correct PVC name when multiple nodegroups have overlapping node affinity.
+func CreateLocalModelInfo(localModelCache *v1alpha1.LocalModelCache, localModelNamespaceCache *v1alpha1.LocalModelNamespaceCache, nodeGroupName string) v1alpha1.LocalModelInfo {
 	params := ExtractLocalModelParams(localModelCache, localModelNamespaceCache)
 	return v1alpha1.LocalModelInfo{
 		ModelName:          params.Name,
 		SourceModelUri:     params.SourceModelUri,
 		Namespace:          params.Namespace,
+		NodeGroup:          nodeGroupName,
 		ServiceAccountName: params.ServiceAccountName,
 		Storage:            params.Storage,
 	}
@@ -570,6 +573,7 @@ func ReconcileForIsvcs(
 
 // UpdateLocalModelNode updates or adds a model to a LocalModelNode
 // Only one of localModelCache or localModelNamespaceCache should be non-nil
+// nodeGroupName specifies which LocalModelNodeGroup this model belongs to
 func UpdateLocalModelNode(
 	ctx context.Context,
 	c client.Client,
@@ -577,9 +581,10 @@ func UpdateLocalModelNode(
 	localModelNode *v1alpha1.LocalModelNode,
 	localModelCache *v1alpha1.LocalModelCache,
 	localModelNamespaceCache *v1alpha1.LocalModelNamespaceCache,
+	nodeGroupName string,
 ) error {
 	params := ExtractLocalModelParams(localModelCache, localModelNamespaceCache)
-	newModelInfo := CreateLocalModelInfo(localModelCache, localModelNamespaceCache)
+	newModelInfo := CreateLocalModelInfo(localModelCache, localModelNamespaceCache, nodeGroupName)
 
 	var patch client.Patch
 	updated := false
@@ -589,6 +594,7 @@ func UpdateLocalModelNode(
 			// Check if any field has changed
 			needsUpdate := modelInfo.SourceModelUri != params.SourceModelUri ||
 				modelInfo.ServiceAccountName != params.ServiceAccountName ||
+				modelInfo.NodeGroup != nodeGroupName ||
 				!StorageSpecEqual(modelInfo.Storage, params.Storage)
 			if !needsUpdate {
 				return nil
@@ -623,8 +629,6 @@ func ReconcileLocalModelNode(
 	nodeGroups map[string]*v1alpha1.LocalModelNodeGroup,
 ) error {
 	params := ExtractLocalModelParams(localModelCache, localModelNamespaceCache)
-	modelInfo := CreateLocalModelInfo(localModelCache, localModelNamespaceCache)
-	statusKey := modelInfo.GetStatusKey()
 
 	// Get or initialize NodeStatus map
 	var nodeStatus map[string]v1alpha1.NodeStatus
@@ -640,7 +644,11 @@ func ReconcileLocalModelNode(
 		nodeStatus = localModelNamespaceCache.Status.NodeStatus
 	}
 
-	for _, nodeGroup := range nodeGroups {
+	for nodeGroupName, nodeGroup := range nodeGroups {
+		// Create modelInfo inside the loop with the correct nodeGroupName
+		// This ensures the agent knows which nodegroup the model belongs to
+		modelInfo := CreateLocalModelInfo(localModelCache, localModelNamespaceCache, nodeGroupName)
+		statusKey := modelInfo.GetStatusKey()
 		readyNodes, notReadyNodes, err := GetNodesFromNodeGroup(ctx, nodeGroup, c)
 		if err != nil {
 			log.Error(err, "getNodesFromNodeGroup node error")
@@ -678,7 +686,7 @@ func ReconcileLocalModelNode(
 					return err
 				}
 			} else {
-				if err := UpdateLocalModelNode(ctx, c, log, localModelNode, localModelCache, localModelNamespaceCache); err != nil {
+				if err := UpdateLocalModelNode(ctx, c, log, localModelNode, localModelCache, localModelNamespaceCache, nodeGroupName); err != nil {
 					return err
 				}
 			}
