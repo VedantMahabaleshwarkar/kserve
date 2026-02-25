@@ -10050,7 +10050,7 @@ var _ = Context("When a Standard-mode predictor deployment develops a ReplicaFai
 				},
 			},
 		}
-		isvc.DefaultInferenceService(nil, nil, &v1beta1.SecurityConfig{AutoMountServiceAccountToken: false}, nil)
+		isvc.DefaultInferenceService(nil, nil, &v1beta1.SecurityConfig{AutoMountServiceAccountToken: false}, nil, nil)
 		Expect(k8sClient.Create(ctx, isvc)).Should(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, isvc) })
 

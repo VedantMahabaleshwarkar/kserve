@@ -125,6 +125,9 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 	}
 
 	pvcName := modelInfo.ModelName + "-" + nodeGroupName
+	if modelInfo.Namespace != "" {
+		pvcName += "-download"
+	}
 	c.Log.Info("Using PVC name to create download job", "current node", nodeName, "node group", nodeGroupName, "PVC name", pvcName)
 
 	// First, try to get container spec from ClusterStorageContainer for backward compatibility

@@ -1192,6 +1192,108 @@ var _ = Describe("LocalModelNode controller", func() {
 				"PVC name should use NodeGroup from modelInfo, not the first matching nodegroup from getNodeGroupFromNode")
 		})
 
+		It("Should append -download suffix to PVC name for namespace-scoped models", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			fsMock.clear()
+
+			nodeName = "worker-ns-pvc"
+			nsModelNamespace := fmt.Sprintf("test-ns-pvc-%d", time.Now().UnixNano())
+			testNs := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: nsModelNamespace},
+			}
+			Expect(k8sClient.Create(ctx, testNs)).Should(Succeed())
+			defer k8sClient.Delete(ctx, testNs)
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constants.InferenceServiceConfigMapName,
+					Namespace: constants.KServeNamespace,
+				},
+				Data: configs,
+			}
+			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(ctx, configMap)
+
+			clusterStorageContainer := &v1alpha1.ClusterStorageContainer{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Spec:       clusterStorageContainerSpec,
+			}
+			Expect(k8sClient.Create(ctx, clusterStorageContainer)).Should(Succeed())
+			defer k8sClient.Delete(ctx, clusterStorageContainer)
+
+			sklearnNodeGroupName := "sklearn-nodegroup"
+			nodeGroup := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: sklearnNodeGroupName},
+				Spec: v1alpha1.LocalModelNodeGroupSpec{
+					StorageLimit: resource.MustParse("10Gi"),
+					PersistentVolumeSpec: corev1.PersistentVolumeSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Capacity:    corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+					},
+					PersistentVolumeClaimSpec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup)
+
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   nodeName,
+					Labels: map[string]string{"node-role.kubernetes.io/worker": ""},
+				},
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
+			defer k8sClient.Delete(ctx, node)
+
+			sklearnModelName := "sklearn-model"
+			nsModelSpec := v1alpha1.LocalModelNodeSpec{
+				LocalModels: []v1alpha1.LocalModelInfo{
+					{
+						SourceModelUri: sourceModelUri,
+						ModelName:      sklearnModelName,
+						NodeGroup:      sklearnNodeGroupName,
+						Namespace:      nsModelNamespace,
+					},
+				},
+			}
+
+			localModelNode := &v1alpha1.LocalModelNode{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec:       nsModelSpec,
+			}
+			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
+			defer k8sClient.Delete(ctx, localModelNode)
+
+			jobs := &batchv1.JobList{}
+			labelSelector := map[string]string{
+				"model":          sklearnModelName,
+				"node":           nodeName,
+				"modelNamespace": nsModelNamespace,
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, jobs, client.InNamespace(nsModelNamespace), client.MatchingLabels(labelSelector))
+				return err == nil && len(jobs.Items) == 1
+			}, timeout, interval).Should(BeTrue(), "Download job should be created in the model's namespace")
+
+			job := &jobs.Items[0]
+			Expect(job.Spec.Template.Spec.Volumes).To(HaveLen(1))
+			pvcVolume := job.Spec.Template.Spec.Volumes[0]
+			Expect(pvcVolume.PersistentVolumeClaim).NotTo(BeNil())
+			Expect(pvcVolume.PersistentVolumeClaim.ClaimName).To(Equal(sklearnModelName+"-"+sklearnNodeGroupName+"-download"),
+				"PVC name for namespace-scoped models must include -download suffix to match the PVC created by the namespace cache reconciler")
+		})
+
 		It("Should track both cluster-scoped and namespace-scoped models with separate status entries", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)

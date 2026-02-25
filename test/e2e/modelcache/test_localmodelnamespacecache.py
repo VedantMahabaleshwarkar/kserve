@@ -39,15 +39,15 @@ from kserve.models.v1beta1_inference_service_spec import V1beta1InferenceService
 from kserve.models.v1beta1_predictor_spec import V1beta1PredictorSpec
 from kserve.models.v1beta1_model_spec import V1beta1ModelSpec
 from kserve.models.v1beta1_model_format import V1beta1ModelFormat
-from ..common.utils import KSERVE_TEST_NAMESPACE, generate
+from ..common.utils import KSERVE_TEST_NAMESPACE, predict_isvc
 
 
 @pytest.mark.modelcache
 @pytest.mark.asyncio(scope="session")
-async def test_vllm_modelnamespacecache():
-    service_name = "qwen-chat-modelnamespacecache-worker1"
-    storage_uri = "hf://Qwen/Qwen2-0.5B-Instruct"
-    nodes = ["minikube-m02", "minikube-m03"]
+async def test_sklearn_modelnamespacecache(rest_v1_client):
+    service_name = "sklearn-modelnamespacecache-worker1"
+    storage_uri = "gs://kfserving-examples/models/sklearn/1.0/model"
+    nodes = ["aks-userpool-27350515-vmss000000", "aks-userpool-27350515-vmss000001"]
 
     pv_spec = V1PersistentVolumeSpec(
         access_modes=["ReadWriteOnce"],
@@ -81,7 +81,7 @@ async def test_vllm_modelnamespacecache():
         api_version=constants.KSERVE_V1ALPHA1,
         kind=constants.KSERVE_KIND_LOCALMODELNODEGROUP,
         metadata=client.V1ObjectMeta(
-            name="qwen-nodegroup-ns",
+            name="sklearn-nodegroup-ns",
         ),
         spec=V1alpha1LocalModelNodeGroupSpec(
             storage_limit="1Gi",
@@ -94,11 +94,11 @@ async def test_vllm_modelnamespacecache():
         api_version=constants.KSERVE_V1ALPHA1,
         kind=constants.KSERVE_KIND_LOCALMODELNAMESPACECACHE,
         metadata=client.V1ObjectMeta(
-            name="qwen-model-ns",
+            name="sklearn-model-ns",
             namespace=KSERVE_TEST_NAMESPACE,
         ),
         spec=V1alpha1LocalModelNamespaceCacheSpec(
-            model_size="251Mi",
+            model_size="10Mi",
             node_groups=[node_group.metadata.name],
             source_model_uri=storage_uri,
         ),
@@ -108,19 +108,12 @@ async def test_vllm_modelnamespacecache():
         min_replicas=1,
         model=V1beta1ModelSpec(
             model_format=V1beta1ModelFormat(
-                name="huggingface",
+                name="sklearn",
             ),
-            args=[
-                "--model_name",
-                "hf-qwen-chat",
-                "--max_model_len",
-                "512",
-                "--dtype",
-                "bfloat16",
-            ],
+            runtime="kserve-sklearnserver",
             resources=V1ResourceRequirements(
-                requests={"cpu": "2", "memory": "7Gi"},
-                limits={"cpu": "2", "memory": "7Gi"},
+                requests={"cpu": "100m", "memory": "256Mi"},
+                limits={"cpu": "500m", "memory": "512Mi"},
             ),
             storage_uri=storage_uri,
         ),
@@ -153,13 +146,13 @@ async def test_vllm_modelnamespacecache():
         constants.KSERVE_GROUP,
         constants.KSERVE_V1ALPHA1_VERSION,
         constants.KSERVE_PLURAL_LOCALMODELNODE,
-        "minikube-m02",
+        nodes[0],
     )
     worker_node_2_cache = k8s_client.get_cluster_custom_object(
         constants.KSERVE_GROUP,
         constants.KSERVE_V1ALPHA1_VERSION,
         constants.KSERVE_PLURAL_LOCALMODELNODE,
-        "minikube-m03",
+        nodes[1],
     )
     # Status key for namespace-scoped models is namespace/modelName
     status_key = f"{KSERVE_TEST_NAMESPACE}/{model_cache.metadata.name}"
@@ -178,11 +171,11 @@ async def test_vllm_modelnamespacecache():
             constants.KSERVE_GROUP,
             constants.KSERVE_V1ALPHA1_VERSION,
             constants.KSERVE_PLURAL_LOCALMODELNODE,
-            "minikube",
+            "aks-agentpool-27350515-vmss000000",
         )
 
-    res = generate(service_name, "./data/qwen_input_chat.json")
-    assert res["choices"][0]["message"]["content"] == "The result of 2 + 2 is 4."
+    res = await predict_isvc(rest_v1_client, service_name, "./data/iris_input.json")
+    assert res["predictions"] == [1, 1]
     kserve_client.delete(service_name, KSERVE_TEST_NAMESPACE)
     # Wait for the isvc to be deleted to avoid modelcache still in use error when deleting the model cache
     await asyncio.sleep(30)

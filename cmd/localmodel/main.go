@@ -37,7 +37,7 @@ import (
 	"github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	localmodelcontroller "github.com/kserve/kserve/pkg/controller/v1alpha1/localmodel"
-	localmodelwebhook "github.com/kserve/kserve/pkg/controller/v1alpha1/localmodel/webhook"
+	localmodelwebhook "github.com/kserve/kserve/pkg/webhook/admission/localmodelcache"
 	localmodelnamespacecachewebhook "github.com/kserve/kserve/pkg/webhook/admission/localmodelnamespacecache"
 )
 
