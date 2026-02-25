@@ -531,7 +531,7 @@ KNATIVE_SERVING_VERSION=1.15.2
 KEDA_OTEL_ADDON_VERSION=v0.0.6
 KSERVE_VERSION=v0.16.0
 ISTIO_VERSION=1.27.1
-KEDA_VERSION=2.17.2
+KEDA_VERSION=2.17.3
 OPENTELEMETRY_OPERATOR_VERSION=0.74.3
 LWS_VERSION=v0.7.0
 GATEWAY_API_VERSION=v1.4.1
@@ -115911,6 +115911,8 @@ spec:
                       type: string
                     namespace:
                       type: string
+                    nodeGroup:
+                      type: string
                     serviceAccountName:
                       type: string
                     sourceModelUri:
@@ -203752,6 +203754,8 @@ spec:
                     modelName:
                       type: string
                     namespace:
+                      type: string
+                    nodeGroup:
                       type: string
                     serviceAccountName:
                       type: string
