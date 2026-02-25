@@ -531,7 +531,7 @@ KNATIVE_SERVING_VERSION=1.15.2
 KEDA_OTEL_ADDON_VERSION=v0.0.6
 KSERVE_VERSION=v0.16.0
 ISTIO_VERSION=1.27.1
-KEDA_VERSION=2.17.3
+KEDA_VERSION=2.17.2
 OPENTELEMETRY_OPERATOR_VERSION=0.74.3
 LWS_VERSION=v0.7.0
 GATEWAY_API_VERSION=v1.4.1
@@ -119361,11 +119361,22 @@ spec:
                   type: string
                 minItems: 1
                 type: array
+              serviceAccountName:
+                type: string
               sourceModelUri:
                 type: string
                 x-kubernetes-validations:
                 - message: StorageUri is immutable
                   rule: self == oldSelf
+              storage:
+                properties:
+                  key:
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    type: object
+                type: object
             required:
             - modelSize
             - nodeGroups
@@ -120133,8 +120144,19 @@ spec:
                   properties:
                     modelName:
                       type: string
+                    serviceAccountName:
+                      type: string
                     sourceModelUri:
                       type: string
+                    storage:
+                      properties:
+                        key:
+                          type: string
+                        parameters:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
                   required:
                   - modelName
                   - sourceModelUri
@@ -120552,6 +120574,8 @@ rules:
   - ""
   resources:
   - nodes
+  - secrets
+  - serviceaccounts
   verbs:
   - get
   - list
