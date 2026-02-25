@@ -39,7 +39,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -138,10 +137,7 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 
 	// If no ClusterStorageContainer match, use StorageInitializerConfig
 	if container == nil {
-		container, err = c.getContainerSpecFromConfig(storageInitializerConfig)
-		if err != nil {
-			return nil, err
-		}
+		container = c.getContainerSpecFromConfig(storageInitializerConfig)
 	}
 
 	// Use hash-based folder path for storage deduplication
@@ -227,8 +223,7 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 	return createdJob, err
 }
 
-// getContainerSpecFromConfig creates a container spec from the StorageInitializerConfig
-func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.StorageInitializerConfig) (*corev1.Container, error) {
+func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.StorageInitializerConfig) *corev1.Container {
 	image := defaultJobImage
 	if config != nil && config.Image != "" {
 		image = config.Image
@@ -240,36 +235,7 @@ func (c *LocalModelNodeReconciler) getContainerSpecFromConfig(config *pkgtypes.S
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 	}
 
-	if config != nil {
-		cpuLimit, err := resource.ParseQuantity(config.CpuLimit)
-		if err != nil {
-			return nil, fmt.Errorf("invalid CpuLimit %q: %w", config.CpuLimit, err)
-		}
-		memLimit, err := resource.ParseQuantity(config.MemoryLimit)
-		if err != nil {
-			return nil, fmt.Errorf("invalid MemoryLimit %q: %w", config.MemoryLimit, err)
-		}
-		cpuRequest, err := resource.ParseQuantity(config.CpuRequest)
-		if err != nil {
-			return nil, fmt.Errorf("invalid CpuRequest %q: %w", config.CpuRequest, err)
-		}
-		memRequest, err := resource.ParseQuantity(config.MemoryRequest)
-		if err != nil {
-			return nil, fmt.Errorf("invalid MemoryRequest %q: %w", config.MemoryRequest, err)
-		}
-		container.Resources = corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:    cpuLimit,
-				corev1.ResourceMemory: memLimit,
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    cpuRequest,
-				corev1.ResourceMemory: memRequest,
-			},
-		}
-	}
-
-	return container, nil
+	return container
 }
 
 // injectCredentials injects storage credentials into the download container.
