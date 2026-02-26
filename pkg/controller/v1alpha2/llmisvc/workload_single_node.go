@@ -253,9 +253,10 @@ func (r *LLMISVCReconciler) expectedPrefillMainDeployment(ctx context.Context, l
 }
 
 func (r *LLMISVCReconciler) propagateDeploymentMetadata(llmSvc *v1alpha2.LLMInferenceService, expected *appsv1.Deployment) {
+	localModelPrefix := constants.InferenceServiceInternalAnnotationsPrefix + "/localmodel"
 	// Define the prefixes to approve for annotations and labels
-	approvedAnnotationPrefixes := []string{"k8s.v1.cni.cncf.io", constants.KueueAPIGroupName}
-	approvedLabelPrefixes := []string{constants.KueueAPIGroupName}
+	approvedAnnotationPrefixes := []string{"k8s.v1.cni.cncf.io", constants.KueueAPIGroupName, localModelPrefix}
+	approvedLabelPrefixes := []string{constants.KueueAPIGroupName, localModelPrefix}
 
 	// Propagate approved annotations to the Deployment and its Pod template
 	utils.PropagatePrefixedMap(llmSvc.GetAnnotations(), &expected.Annotations, approvedAnnotationPrefixes...)

@@ -203758,6 +203758,7 @@ rules:
   - serving.kserve.io
   resources:
   - inferenceservices
+  - llminferenceservices
   - localmodelnodegroups
   verbs:
   - get
