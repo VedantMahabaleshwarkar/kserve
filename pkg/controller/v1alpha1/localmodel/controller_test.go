@@ -1073,6 +1073,74 @@ var _ = Describe("LocalModelNamespaceCache controller", func() {
 			}, timeout, interval).Should(BeTrue(), "Status should only include ISVC from the same namespace")
 		})
 
+		It("Should track LLMInferenceService in namespace-scoped cache status", func() {
+			defer GinkgoRecover()
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+
+			testNamespace := fmt.Sprintf("test-ns-llmns-%d", time.Now().UnixNano())
+			namespaceObj := createTestNamespace(ctx, testNamespace)
+			defer k8sClient.Delete(ctx, namespaceObj)
+
+			nodeGroup1 := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf("gpu-llmns-%d", time.Now().UnixNano()),
+				},
+				Spec: localModelNodeGroupSpec1,
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup1)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup1)
+
+			modelName := fmt.Sprintf("llm-ns-cache-%d", time.Now().UnixNano())
+			cachedModel := &v1alpha1.LocalModelNamespaceCache{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      modelName,
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.LocalModelNamespaceCacheSpec{
+					SourceModelUri: sourceModelUri,
+					ModelSize:      resource.MustParse("123Gi"),
+					NodeGroups:     []string{nodeGroup1.Name},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cachedModel)).Should(Succeed())
+			defer k8sClient.Delete(ctx, cachedModel)
+
+			llmSvcName := "test-llm-ns-tracked"
+			storageUri, err := apis.ParseURL(sourceModelUri)
+			Expect(err).NotTo(HaveOccurred())
+			llmSvc := &v1alpha2.LLMInferenceService{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      llmSvcName,
+					Namespace: testNamespace,
+					Labels: map[string]string{
+						constants.LocalModelLabel:          modelName,
+						constants.LocalModelNamespaceLabel: testNamespace,
+					},
+				},
+				Spec: v1alpha2.LLMInferenceServiceSpec{
+					Model: v1alpha2.LLMModelSpec{
+						URI: *storageUri,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, llmSvc)).Should(Succeed())
+			defer k8sClient.Delete(ctx, llmSvc)
+
+			modelLookupKey := types.NamespacedName{Name: modelName, Namespace: testNamespace}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, modelLookupKey, cachedModel)
+				if err != nil {
+					return false
+				}
+				if len(cachedModel.Status.LLMInferenceServices) != 1 {
+					return false
+				}
+				return cachedModel.Status.LLMInferenceServices[0].Name == llmSvcName &&
+					cachedModel.Status.LLMInferenceServices[0].Namespace == testNamespace
+			}, timeout, interval).Should(BeTrue(), "Namespace cache status should track the LLMInferenceService")
+		})
+
 		It("Should delete LocalModelNamespaceCache and run finalizer cleanup", func() {
 			defer GinkgoRecover()
 			ctx, cancel := context.WithCancel(context.Background())
