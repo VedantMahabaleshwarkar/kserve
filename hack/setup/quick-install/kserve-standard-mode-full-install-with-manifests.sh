@@ -114657,6 +114657,15 @@ spec:
                       type: string
                   type: object
                 type: array
+              llmInferenceServices:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                  type: object
+                type: array
               nodeStatus:
                 additionalProperties:
                   enum:
@@ -114746,6 +114755,15 @@ spec:
                     type: integer
                 type: object
               inferenceServices:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                  type: object
+                type: array
+              llmInferenceServices:
                 items:
                   properties:
                     name:
@@ -202501,6 +202519,15 @@ spec:
                       type: string
                   type: object
                 type: array
+              llmInferenceServices:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                  type: object
+                type: array
               nodeStatus:
                 additionalProperties:
                   enum:
@@ -202590,6 +202617,15 @@ spec:
                     type: integer
                 type: object
               inferenceServices:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                  type: object
+                type: array
+              llmInferenceServices:
                 items:
                   properties:
                     name:
