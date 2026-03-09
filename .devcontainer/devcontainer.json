@@ -1,6 +1,6 @@
 {
   "name": "KServe E2E Tests",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "ghcr.io/vedantmahabaleshwarkar/kserve-e2e-devcontainer:latest",
   "hostRequirements": {
     "cpus": 8,
     "memory": "32gb",
@@ -10,17 +10,10 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {
       "dockerDashComposeVersion": "none"
     },
-    "ghcr.io/devcontainers/features/go:1": {
-      "version": "1.25.4"
-    },
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.10"
-    },
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
     }
   },
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
   "remoteEnv": {
     "KO_DOCKER_REPO": "kserve"
   }
