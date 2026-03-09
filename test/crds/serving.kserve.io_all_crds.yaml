@@ -116155,6 +116155,8 @@ spec:
                       type: string
                     namespace:
                       type: string
+                    nodeGroup:
+                      type: string
                     serviceAccountName:
                       type: string
                     sourceModelUri:
