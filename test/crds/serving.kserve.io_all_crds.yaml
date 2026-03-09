@@ -116153,6 +116153,8 @@ spec:
                   properties:
                     modelName:
                       type: string
+                    namespace:
+                      type: string
                     serviceAccountName:
                       type: string
                     sourceModelUri:
