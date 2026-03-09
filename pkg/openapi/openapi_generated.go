@@ -54,6 +54,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelNodeGroupSpec":       schema_pkg_apis_serving_v1alpha1_LocalModelNodeGroupSpec(ref),
 		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelNodeList":            schema_pkg_apis_serving_v1alpha1_LocalModelNodeList(ref),
 		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelNodeSpec":            schema_pkg_apis_serving_v1alpha1_LocalModelNodeSpec(ref),
+		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec":         schema_pkg_apis_serving_v1alpha1_LocalModelStorageSpec(ref),
 		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.ModelSpec":                     schema_pkg_apis_serving_v1alpha1_ModelSpec(ref),
 		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.ServingRuntime":                schema_pkg_apis_serving_v1alpha1_ServingRuntime(ref),
 		"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.ServingRuntimeList":            schema_pkg_apis_serving_v1alpha1_ServingRuntimeList(ref),
@@ -1186,12 +1187,24 @@ func schema_pkg_apis_serving_v1alpha1_LocalModelCacheSpec(ref common.ReferenceCa
 							},
 						},
 					},
+					"serviceAccountName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ServiceAccountName specifies the service account to use for credential lookup.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"storage": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec"),
+						},
+					},
 				},
 				Required: []string{"sourceModelUri", "modelSize", "nodeGroups"},
 			},
 		},
 		Dependencies: []string{
-			"k8s.io/apimachinery/pkg/api/resource.Quantity"},
+			"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelStorageSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
 	}
 }
 
@@ -1445,6 +1458,42 @@ func schema_pkg_apis_serving_v1alpha1_LocalModelNodeSpec(ref common.ReferenceCal
 		},
 		Dependencies: []string{
 			"github.com/kserve/kserve/pkg/apis/serving/v1alpha1.LocalModelInfo"},
+	}
+}
+
+func schema_pkg_apis_serving_v1alpha1_LocalModelStorageSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LocalModelStorageSpec defines credential and storage configuration for model download",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The Storage Key in the secret for this object.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"parameters": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Parameters to override the default storage credentials and config.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
