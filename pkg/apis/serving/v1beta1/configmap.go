@@ -169,6 +169,7 @@ type LocalModelConfig struct {
 	JobTTLSecondsAfterFinished   *int32 `json:"jobTTLSecondsAfterFinished,omitempty"`
 	ReconcilationFrequencyInSecs *int64 `json:"reconcilationFrequencyInSecs,omitempty"`
 	DisableVolumeManagement      bool   `json:"disableVolumeManagement,omitempty"`
+	UseJobForModelDeletion       bool   `json:"useJobForModelDeletion,omitempty"`
 }
 
 // +kubebuilder:object:generate=false

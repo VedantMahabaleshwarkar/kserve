@@ -51,8 +51,9 @@ func (m *MockFileInfo) Info() (fs.FileInfo, error) { return nil, nil }
 
 type mockFileSystem struct {
 	FileSystemInterface
-	// represents the dirs under /mnt/models/models
-	subDirs []os.DirEntry
+	// represents the dirs under the models root folder
+	subDirs  []os.DirEntry
+	writable bool
 }
 
 func (f *mockFileSystem) removeModel(model string) error {
@@ -92,13 +93,18 @@ func (f *mockFileSystem) ensureModelRootFolderExists() error {
 	return nil
 }
 
+func (f *mockFileSystem) isWritable() bool {
+	return f.writable
+}
+
 func (f *mockFileSystem) clear() {
 	f.subDirs = []os.DirEntry{}
 }
 
 func newMockFileSystem() *mockFileSystem {
 	return &mockFileSystem{
-		subDirs: []os.DirEntry{},
+		subDirs:  []os.DirEntry{},
+		writable: true,
 	}
 }
 
@@ -371,9 +377,10 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 			container := job.Spec.Template.Spec.Containers[0]
 			Expect(container.VolumeMounts).To(HaveLen(1))
-			Expect(container.VolumeMounts[0].SubPath).To(Equal("models/"+storageKey),
-				"Download job SubPath must use storageKey hash, not modelName, for storage deduplication. "+
-					"storageKey=%s, modelName=%s", storageKey, modelName)
+			Expect(container.VolumeMounts[0].SubPath).To(BeEmpty(),
+				"Download job should not use SubPath, to allow FSGroup to apply permissions")
+			Expect(container.Args).To(Equal([]string{sourceModelUri, MountPath + "/" + storageKey}),
+				"Download destination should include storageKey subdirectory")
 		})
 		It("Should recreate download jobs if the model is missing from local disk", func() {
 			fsMock.clear()
@@ -724,7 +731,8 @@ var _ = Describe("LocalModelNode controller", func() {
 			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 			container := job.Spec.Template.Spec.Containers[0]
 			Expect(container.Image).To(Equal("kserve/storage-initializer:latest"))
-			Expect(container.Args).To(Equal([]string{"hf://meta-llama/Meta-Llama-3-8B", "/mnt/models"}))
+			storageKey := v1alpha1.GetStorageKey("hf://meta-llama/Meta-Llama-3-8B")
+			Expect(container.Args).To(Equal([]string{"hf://meta-llama/Meta-Llama-3-8B", MountPath + "/" + storageKey}))
 		})
 
 		It("Should use storage key credentials when specified in LocalModelInfo", func() {
@@ -1445,5 +1453,198 @@ var _ = Describe("LocalModelNode controller", func() {
 				return true
 			}, timeout, interval).Should(BeTrue(), "Status should have separate entries for cluster and namespace-scoped models")
 		})
+
+		It("Should create a permission fix job when the directory is not writable", func() {
+			ctx := context.Background()
+			fsMock.clear()
+			fsMock.writable = false
+			defer func() { fsMock.writable = true }()
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constants.InferenceServiceConfigMapName,
+					Namespace: constants.KServeNamespace,
+				},
+				Data: configs,
+			}
+			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(ctx, configMap)
+
+			clusterStorageContainer := &v1alpha1.ClusterStorageContainer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+				},
+				Spec: clusterStorageContainerSpec,
+			}
+			Expect(k8sClient.Create(ctx, clusterStorageContainer)).Should(Succeed())
+			defer k8sClient.Delete(ctx, clusterStorageContainer)
+
+			nodeGroup := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gpu",
+				},
+				Spec: localModelNodeGroupSpec,
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup)
+
+			nodeName = "worker-perms"
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					Labels: map[string]string{
+						"node.kubernetes.io/instance-type": "gpu",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{
+							Type:   corev1.NodeReady,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
+			defer k8sClient.Delete(ctx, node)
+
+			localModelNode := &v1alpha1.LocalModelNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+				},
+				Spec: localModelNodeSpec,
+			}
+			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
+			defer k8sClient.Delete(ctx, localModelNode)
+
+			// Wait for the permission fix job to be created
+			fixJobs := &batchv1.JobList{}
+			fixLabels := map[string]string{
+				"fix-permissions": "true",
+				"node":            nodeName,
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, fixJobs, client.InNamespace("kserve-localmodel-jobs"), client.MatchingLabels(fixLabels))
+				return err == nil && len(fixJobs.Items) > 0
+			}, timeout, interval).Should(BeTrue(), "Permission fix job should be created")
+
+			// Verify the job runs as root
+			job := &fixJobs.Items[0]
+			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
+			container := job.Spec.Template.Spec.Containers[0]
+			Expect(container.SecurityContext).NotTo(BeNil())
+			Expect(*container.SecurityContext.RunAsUser).To(Equal(int64(0)))
+			Expect(*container.SecurityContext.AllowPrivilegeEscalation).To(BeTrue())
+			Expect(container.SecurityContext.Capabilities).NotTo(BeNil())
+			Expect(container.SecurityContext.Capabilities.Add).To(ContainElements(
+				corev1.Capability("CHOWN"),
+				corev1.Capability("DAC_OVERRIDE"),
+				corev1.Capability("FOWNER"),
+			))
+			expectedCmd := fmt.Sprintf("chown -R 1000:1000 %s && chcon -R -t container_file_t %s", MountPath, MountPath)
+			Expect(container.Command).To(Equal([]string{"sh", "-c", expectedCmd}))
+
+			// No download job should be created while directory is not writable
+			downloadJobs := &batchv1.JobList{}
+			downloadLabels := map[string]string{
+				"model": modelName,
+				"node":  nodeName,
+			}
+			Consistently(func() bool {
+				err := k8sClient.List(ctx, downloadJobs, client.InNamespace("kserve-localmodel-jobs"), client.MatchingLabels(downloadLabels))
+				return err == nil && len(downloadJobs.Items) == 0
+			}, time.Second*3, interval).Should(BeTrue(), "No download job should be created while directory is not writable")
+		})
+
+		It("Should not create duplicate permission fix jobs", func() {
+			ctx := context.Background()
+			fsMock.clear()
+			fsMock.writable = false
+			defer func() { fsMock.writable = true }()
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constants.InferenceServiceConfigMapName,
+					Namespace: constants.KServeNamespace,
+				},
+				Data: configs,
+			}
+			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(ctx, configMap)
+
+			clusterStorageContainer := &v1alpha1.ClusterStorageContainer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+				},
+				Spec: clusterStorageContainerSpec,
+			}
+			Expect(k8sClient.Create(ctx, clusterStorageContainer)).Should(Succeed())
+			defer k8sClient.Delete(ctx, clusterStorageContainer)
+
+			nodeGroup := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gpu",
+				},
+				Spec: localModelNodeGroupSpec,
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup)
+
+			nodeName = "worker-perms-dup"
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					Labels: map[string]string{
+						"node.kubernetes.io/instance-type": "gpu",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{
+							Type:   corev1.NodeReady,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
+			defer k8sClient.Delete(ctx, node)
+
+			localModelNode := &v1alpha1.LocalModelNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+				},
+				Spec: localModelNodeSpec,
+			}
+			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
+			defer k8sClient.Delete(ctx, localModelNode)
+
+			// Wait for the first permission fix job
+			fixJobs := &batchv1.JobList{}
+			fixLabels := map[string]string{
+				"fix-permissions": "true",
+				"node":            nodeName,
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, fixJobs, client.InNamespace("kserve-localmodel-jobs"), client.MatchingLabels(fixLabels))
+				return err == nil && len(fixJobs.Items) > 0
+			}, timeout, interval).Should(BeTrue(), "Permission fix job should be created")
+
+			// Trigger additional reconciliations by annotating the CR
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeName}, localModelNode)).Should(Succeed())
+			if localModelNode.Annotations == nil {
+				localModelNode.Annotations = map[string]string{}
+			}
+			localModelNode.Annotations["trigger-reconcile"] = "true"
+			Expect(k8sClient.Update(ctx, localModelNode)).Should(Succeed())
+
+			// Wait a bit for reconciliation to process
+			time.Sleep(2 * time.Second)
+
+			// Should still be only one permission fix job
+			Expect(k8sClient.List(ctx, fixJobs, client.InNamespace("kserve-localmodel-jobs"), client.MatchingLabels(fixLabels))).Should(Succeed())
+			Expect(len(fixJobs.Items)).To(Equal(1), "Should not create duplicate permission fix jobs")
+		})
+
 	})
 })

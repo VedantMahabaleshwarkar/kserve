@@ -18,11 +18,14 @@ limitations under the License.
 // +kubebuilder:rbac:groups=serving.kserve.io,resources=clusterstoragecontainers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=serving.kserve.io,resources=localmodelnodes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=serving.kserve.io,resources=localmodelnodes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=serving.kserve.io,resources=localmodelnodes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=nodes/status,verbs=get;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;create;delete
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;create;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 package localmodelnode
@@ -32,7 +35,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -43,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -79,7 +82,7 @@ var (
 	jobTTLSecondsAfterFinished int32         = 3600                   // One hour. Can be overwritten by the value in the configmap
 	reconcilationFreqency      time.Duration = time.Minute            // Reconcile every one minute to check if model folders exist. Can be overwritten by the value in configmap
 	nodeName                                 = os.Getenv("NODE_NAME") // Name of current node, passed as an env variable via downward API
-	modelsRootFolder                         = filepath.Join(MountPath, "models")
+	modelsRootFolder                         = MountPath
 	fsHelper                   FileSystemInterface
 	storageInitializerConfig   *pkgtypes.StorageInitializerConfig
 )
@@ -142,13 +145,13 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 
 	// Use hash-based folder path for storage deduplication
 	storageKey := v1alpha1.GetStorageKey(modelInfo.SourceModelUri)
-	container.Args = []string{modelInfo.SourceModelUri, MountPath}
+	destPath := MountPath + "/" + storageKey
+	container.Args = []string{modelInfo.SourceModelUri, destPath}
 	container.VolumeMounts = []corev1.VolumeMount{
 		{
 			MountPath: MountPath,
 			Name:      PvcSourceMountName,
 			ReadOnly:  false,
-			SubPath:   filepath.Join("models", storageKey),
 		},
 	}
 
@@ -187,6 +190,15 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 		jobLabels["modelNamespace"] = modelInfo.Namespace
 	}
 
+	var podSecurityContext *corev1.PodSecurityContext
+	if FSGroup != nil {
+		podSecurityContext = &corev1.PodSecurityContext{
+			FSGroup:    FSGroup,
+			RunAsUser:  FSGroup,
+			RunAsGroup: FSGroup,
+		}
+	}
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: jobName,
@@ -197,13 +209,12 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 			TTLSecondsAfterFinished: &jobTTLSecondsAfterFinished,
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					NodeName:      nodeName,
-					Containers:    []corev1.Container{*container},
-					RestartPolicy: corev1.RestartPolicyNever,
-					Volumes:       volumes,
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup: FSGroup,
-					},
+					ServiceAccountName: "kserve-localmodelnode-agent",
+					NodeName:           nodeName,
+					Containers:         []corev1.Container{*container},
+					RestartPolicy:      corev1.RestartPolicyNever,
+					Volumes:            volumes,
+					SecurityContext:    podSecurityContext,
 				},
 			},
 		},
@@ -447,7 +458,7 @@ func (c *LocalModelNodeReconciler) downloadModels(ctx context.Context, localMode
 
 // Delete models that are not in the spec
 // Uses hash-based folder names (storageKey) for storage deduplication
-func (c *LocalModelNodeReconciler) deleteModels(localModelNode v1alpha1.LocalModelNode) error {
+func (c *LocalModelNodeReconciler) deleteModels(ctx context.Context, localModelNode *v1alpha1.LocalModelNode) error {
 	// 1. Scan model dir and get a list of existing folders representing downloaded models
 	foldersToRemove := map[string]struct{}{}
 	entries, err := fsHelper.getModelFolders()
@@ -479,6 +490,88 @@ func (c *LocalModelNodeReconciler) deleteModels(localModelNode v1alpha1.LocalMod
 			}
 		}
 	}
+	return nil
+}
+
+func (c *LocalModelNodeReconciler) launchPermissionFixJob(ctx context.Context) error {
+	jobName := fmt.Sprintf("fix-permissions-%s", nodeName)
+
+	existingJobs := &batchv1.JobList{}
+	fixLabels := map[string]string{
+		"fix-permissions": "true",
+		"node":            nodeName,
+	}
+	if err := c.List(ctx, existingJobs, client.InNamespace(jobNamespace), client.MatchingLabels(fixLabels)); err != nil {
+		return err
+	}
+	if len(existingJobs.Items) > 0 {
+		c.Log.Info("Permission fix job already exists", "node", nodeName)
+		return nil
+	}
+
+	pvcName := "kserve-localmodelnode-pvc"
+	rootUser := int64(0)
+	permFixTTL := int32(60)
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: jobName,
+			Namespace:    jobNamespace,
+			Labels:       fixLabels,
+		},
+		Spec: batchv1.JobSpec{
+			TTLSecondsAfterFinished: &permFixTTL,
+			BackoffLimit:            ptr.To(int32(0)),
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					ServiceAccountName: "kserve-localmodelnode-agent",
+					NodeName:           nodeName,
+					RestartPolicy:      corev1.RestartPolicyNever,
+					SecurityContext: &corev1.PodSecurityContext{
+						SELinuxOptions: &corev1.SELinuxOptions{
+							Type:  "spc_t",
+							Level: "s0",
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:    "fix-permissions",
+							Image:   "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+							Command: []string{"sh", "-c", fmt.Sprintf("chown -R 1000:1000 %s && chcon -R -t container_file_t %s", MountPath, MountPath)},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:                &rootUser,
+								AllowPrivilegeEscalation: ptr.To(true),
+								Capabilities: &corev1.Capabilities{
+									Add: []corev1.Capability{"CHOWN", "DAC_OVERRIDE", "FOWNER"},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      PvcSourceMountName,
+									MountPath: MountPath,
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: PvcSourceMountName,
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: pvcName,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	createdJob, err := c.Clientset.BatchV1().Jobs(jobNamespace).Create(ctx, job, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create permission fix job: %w", err)
+	}
+	c.Log.Info("Created permission fix job", "name", createdJob.Name, "node", nodeName)
 	return nil
 }
 
@@ -539,10 +632,9 @@ func (c *LocalModelNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// fsHelper is a global variable to allow mocking in tests
 	if fsHelper == nil {
 		fsHelper = NewFileSystemHelper(modelsRootFolder)
-		// TODO we need a way to ensure that the local path on persistent volume is the same as the local path of the node agent DaemonSet.
-		err := fsHelper.ensureModelRootFolderExists()
-		if err != nil {
-			panic("Failed to ensure model root folder exists: " + err.Error())
+		if err := fsHelper.ensureModelRootFolderExists(); err != nil {
+			c.Log.Error(err, "Failed to ensure model root folder exists")
+			return reconcile.Result{}, err
 		}
 	}
 
@@ -586,6 +678,15 @@ func (c *LocalModelNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Don't fail, just use defaults
 	}
 
+	if !fsHelper.isWritable() {
+		c.Log.Info("Model root directory is not writable, launching permission fix job", "path", modelsRootFolder)
+		if err := c.launchPermissionFixJob(ctx); err != nil {
+			c.Log.Error(err, "Failed to launch permission fix job")
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
 	if c.CredentialBuilder == nil {
 		c.CredentialBuilder = credentials.NewCredentialBuilder(c.Client, c.Clientset, isvcConfigMap)
 	}
@@ -595,10 +696,9 @@ func (c *LocalModelNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return reconcile.Result{}, err
 	}
 
-	// 4. Delete models that are not in the spec. This function does not modify the resource.
-	if err := c.deleteModels(localModelNode); err != nil {
-		c.Log.Error(err, "Model deletion err")
-		return reconcile.Result{}, err
+	// 4. Delete models that are not in the spec
+	if err := c.deleteModels(ctx, &localModelNode); err != nil {
+		c.Log.Info("Model deletion skipped", "error", err)
 	}
 	// Requeue to check local folders periodically
 	return reconcile.Result{RequeueAfter: reconcilationFreqency}, nil
