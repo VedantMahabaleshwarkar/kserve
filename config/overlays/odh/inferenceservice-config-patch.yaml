@@ -140,5 +140,6 @@ data:
       "localModelAgentCpuRequest": "100m",
       "localModelAgentMemoryRequest": "200Mi",
       "localModelAgentCpuLimit": "100m",
-      "localModelAgentMemoryLimit": "300Mi"
+      "localModelAgentMemoryLimit": "300Mi",
+      "permissionFixImage": "$(kserve-agent)"
     }

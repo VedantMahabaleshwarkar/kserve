@@ -26,6 +26,7 @@ limitations under the License.
 // +kubebuilder:rbac:groups=core,resources=nodes/status,verbs=get;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 package localmodelnode
@@ -35,6 +36,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -85,6 +87,7 @@ var (
 	modelsRootFolder                         = MountPath
 	fsHelper                   FileSystemInterface
 	storageInitializerConfig   *pkgtypes.StorageInitializerConfig
+	permissionFixImage         = "registry.access.redhat.com/ubi9/ubi-minimal:latest"
 )
 
 // Returns the first matching nodegroup for a node.
@@ -186,12 +189,15 @@ func (c *LocalModelNodeReconciler) launchJob(ctx context.Context, localModelNode
 		jobLabels["modelNamespace"] = modelInfo.Namespace
 	}
 
-	var podSecurityContext *corev1.PodSecurityContext
+	podSecurityContext := &corev1.PodSecurityContext{}
 	if FSGroup != nil {
-		podSecurityContext = &corev1.PodSecurityContext{
-			FSGroup:    FSGroup,
-			RunAsUser:  FSGroup,
-			RunAsGroup: FSGroup,
+		podSecurityContext.FSGroup = FSGroup
+		podSecurityContext.RunAsUser = FSGroup
+		podSecurityContext.RunAsGroup = FSGroup
+	}
+	if mcsLevel := getProcessMCSLevel(); mcsLevel != "" {
+		podSecurityContext.SELinuxOptions = &corev1.SELinuxOptions{
+			Level: mcsLevel,
 		}
 	}
 
@@ -557,14 +563,21 @@ func (c *LocalModelNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return reconcile.Result{}, err
 		}
 		jobNamespace = localModelConfig.JobNamespace
+		if localModelConfig.PermissionFixImage != "" {
+			permissionFixImage = localModelConfig.PermissionFixImage
+		}
 
-		mcsLevel := ""
-		ns, err := c.Clientset.CoreV1().Namespaces().Get(ctx, jobNamespace, metav1.GetOptions{})
-		if err != nil {
-			c.Log.Info("Could not get namespace for MCS annotation, using default", "namespace", jobNamespace, "error", err)
-		} else if mcs, ok := ns.Annotations["openshift.io/sa.scc.mcs"]; ok {
-			mcsLevel = mcs
-			c.Log.Info("Found MCS level for namespace", "namespace", jobNamespace, "mcsLevel", mcsLevel)
+		mcsLevel := getProcessMCSLevel()
+		if mcsLevel != "" {
+			c.Log.Info("Read MCS level from agent process", "mcsLevel", mcsLevel)
+		} else {
+			ns, err := c.Clientset.CoreV1().Namespaces().Get(ctx, jobNamespace, metav1.GetOptions{})
+			if err != nil {
+				c.Log.Info("Could not get namespace for MCS annotation, using default", "namespace", jobNamespace, "error", err)
+			} else if mcs, ok := ns.Annotations["openshift.io/sa.scc.mcs"]; ok {
+				mcsLevel = mcs
+				c.Log.Info("Falling back to namespace MCS level", "namespace", jobNamespace, "mcsLevel", mcsLevel)
+			}
 		}
 
 		if err := c.launchPermissionFixJob(ctx, mcsLevel); err != nil {
@@ -625,10 +638,25 @@ func (c *LocalModelNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// 4. Delete models that are not in the spec. This function does not modify the resource.
 	if err := c.deleteModels(ctx, &localModelNode); err != nil {
-		c.Log.Info("Model deletion skipped", "error", err)
+		return reconcile.Result{}, err
 	}
 	// Requeue to check local folders periodically
 	return reconcile.Result{RequeueAfter: reconcilationFreqency}, nil
+}
+
+// getProcessMCSLevel reads the SELinux MCS level from the current process.
+// Returns empty string on non-SELinux systems.
+func getProcessMCSLevel() string {
+	data, err := os.ReadFile("/proc/self/attr/current")
+	if err != nil {
+		return ""
+	}
+	// Format: user:role:type:level (e.g., system_u:system_r:container_t:s0:c282,c553)
+	parts := strings.SplitN(strings.Trim(string(data), "\x00 \n\r"), ":", 4)
+	if len(parts) < 4 {
+		return ""
+	}
+	return parts[3]
 }
 
 func (c *LocalModelNodeReconciler) launchPermissionFixJob(ctx context.Context, mcsLevel string) error {
@@ -643,7 +671,16 @@ func (c *LocalModelNodeReconciler) launchPermissionFixJob(ctx context.Context, m
 		return err
 	}
 	if len(existingJobs.Items) > 0 {
-		c.Log.Info("Permission fix job already exists", "node", nodeName)
+		job := &existingJobs.Items[0]
+		if job.Status.Failed > 0 {
+			c.Log.Error(fmt.Errorf("permission fix job %s failed", job.Name),
+				"Ensure the service account has 'use' permission on kserve-localmodel-permissions-scc")
+			_ = c.Clientset.BatchV1().Jobs(jobNamespace).Delete(ctx, job.Name, metav1.DeleteOptions{
+				PropagationPolicy: ptr.To(metav1.DeletePropagationBackground),
+			})
+			return fmt.Errorf("permission fix job %s failed, will retry", job.Name)
+		}
+		c.Log.Info("Permission fix job already exists", "node", nodeName, "job", job.Name)
 		return nil
 	}
 
@@ -684,11 +721,11 @@ func (c *LocalModelNodeReconciler) launchPermissionFixJob(ctx context.Context, m
 					Containers: []corev1.Container{
 						{
 							Name:  "fix-permissions",
-							Image: "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+							Image: permissionFixImage,
 							Command: []string{
 								"sh", "-c",
-								fmt.Sprintf("chown -R 1000:1000 %s && %s",
-									MountPath, chconCmd),
+								fmt.Sprintf("chown -R %d:%d %s && %s",
+									os.Getuid(), os.Getgid(), MountPath, chconCmd),
 							},
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:                &rootUser,
