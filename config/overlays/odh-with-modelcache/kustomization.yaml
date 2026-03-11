@@ -5,7 +5,8 @@ resources:
 - ../odh
 - localmodel-scc.yaml
 - localmodel-permissions-scc.yaml
-- localmodelnode-pv-pvc.yaml
+# This will be created by the operator
+# - localmodelnode-pv-pvc.yaml
 
 namespace: opendatahub
 
