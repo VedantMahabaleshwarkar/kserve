@@ -7,14 +7,10 @@ resources:
 - user-cluster-roles.yaml
 - network-policies.yaml
 - llm-svc-scc.yaml
-- localmodel-scc.yaml
-- localmodel-permissions-scc.yaml
-- localmodelnode-pv-pvc.yaml
 
 components:
 - ../../components/kserve
 - ../../components/llmisvc
-- ../../components/localmodel
 
 namespace: opendatahub
 
@@ -46,43 +42,6 @@ patches:
     name: llmisvc-webhook-server-service
   path: openshift-serving-cert-llmisvc-patch.yaml
 - target:
-    kind: Service
-    name: localmodel-webhook-server-service
-  path: openshift-serving-cert-localmodel-patch.yaml
-- patch: |-
-    - op: replace
-      path: /spec/template/spec/containers/0/volumeMounts/0/mountPath
-      value: /var/lib/kserve
-    - op: replace
-      path: /spec/template/spec/volumes/0
-      value:
-        name: models
-        persistentVolumeClaim:
-          claimName: kserve-localmodelnode-pvc
-    - op: add
-      path: /spec/template/spec/securityContext/runAsUser
-      value: 1000
-    - op: add
-      path: /spec/template/spec/securityContext/runAsGroup
-      value: 1000
-    - op: add
-      path: /spec/template/spec/securityContext/fsGroup
-      value: 1000
-  target:
-    kind: DaemonSet
-    name: kserve-localmodelnode-agent
-- target:
-    kind: ClusterRole
-    name: kserve-localmodelnode-agent-role
-  patch: |
-    - op: add
-      path: /rules/-
-      value:
-        apiGroups: ["security.openshift.io"]
-        resources: ["securitycontextconstraints"]
-        resourceNames: ["openshift-ai-localmodel-scc", "kserve-localmodel-permissions-scc"]
-        verbs: ["use"]
-- target:
     kind: ClusterRole
     name: kserve-llmisvc-manager-role
   patch: |
@@ -103,26 +62,6 @@ replacements:
   - select:
       kind: Deployment
       name: kserve-controller-manager
-    fieldPaths:
-    - spec.template.spec.containers.[name=manager].image
-- source:
-    kind: ConfigMap
-    name: kserve-parameters
-    fieldpath: data.kserve-localmodel-controller
-  targets:
-  - select:
-      kind: Deployment
-      name: kserve-localmodel-controller-manager
-    fieldPaths:
-    - spec.template.spec.containers.[name=manager].image
-- source:
-    kind: ConfigMap
-    name: kserve-parameters
-    fieldpath: data.kserve-localmodelnode-agent
-  targets:
-  - select:
-      kind: DaemonSet
-      name: kserve-localmodelnode-agent
     fieldPaths:
     - spec.template.spec.containers.[name=manager].image
 # Replace base LLMInferenceServiceConfig images with Red Hat CUDA image
@@ -225,13 +164,6 @@ vars:
 - fieldref:
     fieldpath: data.kube-rbac-proxy
   name: kube-rbac-proxy
-  objref:
-    apiVersion: v1
-    kind: ConfigMap
-    name: kserve-parameters
-- fieldref:
-    fieldpath: data.kserve-localmodel-controller
-  name: kserve-localmodel-controller
   objref:
     apiVersion: v1
     kind: ConfigMap
