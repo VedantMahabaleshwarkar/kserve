@@ -132,7 +132,7 @@ data:
     }
   localModel: |-
     {
-      "enabled": true,
+      "enabled": false,
       "jobNamespace": "opendatahub",
       "defaultJobImage" : "$(kserve-storage-initializer)",
       "fsGroup": 1000,
