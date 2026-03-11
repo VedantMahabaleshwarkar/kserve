@@ -115,7 +115,7 @@ func TestFileSystemHelper_removeModel(t *testing.T) {
 func TestFileSystemHelper_ensureModelRootFolderExists(t *testing.T) {
 	// Case 1: Folder does not exist, should be created
 	tempDir := t.TempDir()
-	modelsRoot := filepath.Join(tempDir, "models")
+	modelsRoot := tempDir
 	helper := NewFileSystemHelper(modelsRoot)
 
 	err := helper.ensureModelRootFolderExists()
@@ -142,7 +142,7 @@ func TestFileSystemHelper_ensureModelRootFolderExists(t *testing.T) {
 		t.Fatalf("failed to create permDir: %v", err)
 	}
 	defer os.Chmod(permDir, 0o755) //nolint
-	unwritableRoot := filepath.Join(permDir, "models")
+	unwritableRoot := filepath.Join(permDir, "subdir")
 	helper2 := NewFileSystemHelper(unwritableRoot)
 	err = helper2.ensureModelRootFolderExists()
 	if err == nil {

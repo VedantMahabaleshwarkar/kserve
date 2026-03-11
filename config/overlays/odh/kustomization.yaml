@@ -7,6 +7,8 @@ resources:
 - user-cluster-roles.yaml
 - network-policies.yaml
 - llm-svc-scc.yaml
+- localmodel-scc.yaml
+- localmodel-permissions-scc.yaml
 - localmodelnode-pv-pvc.yaml
 
 components:
@@ -69,6 +71,17 @@ patches:
   target:
     kind: DaemonSet
     name: kserve-localmodelnode-agent
+- target:
+    kind: ClusterRole
+    name: kserve-localmodelnode-agent-role
+  patch: |
+    - op: add
+      path: /rules/-
+      value:
+        apiGroups: ["security.openshift.io"]
+        resources: ["securitycontextconstraints"]
+        resourceNames: ["openshift-ai-localmodel-scc", "kserve-localmodel-permissions-scc"]
+        verbs: ["use"]
 - target:
     kind: ClusterRole
     name: kserve-llmisvc-manager-role
