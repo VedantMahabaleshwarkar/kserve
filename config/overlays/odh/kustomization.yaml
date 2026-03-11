@@ -47,6 +47,28 @@ patches:
     kind: Service
     name: localmodel-webhook-server-service
   path: openshift-serving-cert-localmodel-patch.yaml
+- patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/volumeMounts/0/mountPath
+      value: /var/lib/kserve
+    - op: replace
+      path: /spec/template/spec/volumes/0
+      value:
+        name: models
+        persistentVolumeClaim:
+          claimName: kserve-localmodelnode-pvc
+    - op: add
+      path: /spec/template/spec/securityContext/runAsUser
+      value: 1000
+    - op: add
+      path: /spec/template/spec/securityContext/runAsGroup
+      value: 1000
+    - op: add
+      path: /spec/template/spec/securityContext/fsGroup
+      value: 1000
+  target:
+    kind: DaemonSet
+    name: kserve-localmodelnode-agent
 - target:
     kind: ClusterRole
     name: kserve-llmisvc-manager-role
