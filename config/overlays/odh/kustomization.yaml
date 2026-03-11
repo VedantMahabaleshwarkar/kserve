@@ -7,11 +7,12 @@ resources:
 - user-cluster-roles.yaml
 - network-policies.yaml
 - llm-svc-scc.yaml
+- localmodelnode-pv-pvc.yaml
 
 components:
 - ../../components/kserve
 - ../../components/llmisvc
-# - ../../localmodels
+- ../../components/localmodel
 
 namespace: opendatahub
 
@@ -43,6 +44,10 @@ patches:
     name: llmisvc-webhook-server-service
   path: openshift-serving-cert-llmisvc-patch.yaml
 - target:
+    kind: Service
+    name: localmodel-webhook-server-service
+  path: openshift-serving-cert-localmodel-patch.yaml
+- target:
     kind: ClusterRole
     name: kserve-llmisvc-manager-role
   patch: |
@@ -63,6 +68,26 @@ replacements:
   - select:
       kind: Deployment
       name: kserve-controller-manager
+    fieldPaths:
+    - spec.template.spec.containers.[name=manager].image
+- source:
+    kind: ConfigMap
+    name: kserve-parameters
+    fieldpath: data.kserve-localmodel-controller
+  targets:
+  - select:
+      kind: Deployment
+      name: kserve-localmodel-controller-manager
+    fieldPaths:
+    - spec.template.spec.containers.[name=manager].image
+- source:
+    kind: ConfigMap
+    name: kserve-parameters
+    fieldpath: data.kserve-localmodelnode-agent
+  targets:
+  - select:
+      kind: DaemonSet
+      name: kserve-localmodelnode-agent
     fieldPaths:
     - spec.template.spec.containers.[name=manager].image
 # Replace base LLMInferenceServiceConfig images with Red Hat CUDA image
@@ -165,6 +190,20 @@ vars:
 - fieldref:
     fieldpath: data.kube-rbac-proxy
   name: kube-rbac-proxy
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-localmodel-controller
+  name: kserve-localmodel-controller
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-localmodelnode-agent
+  name: kserve-localmodelnode-agent
   objref:
     apiVersion: v1
     kind: ConfigMap
