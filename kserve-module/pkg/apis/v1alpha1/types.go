@@ -2,6 +2,7 @@
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/opendatahub-io/odh-platform-utilities/api/common"
@@ -44,6 +45,7 @@ type KserveSpec struct {
 	RawDeploymentServiceConfig RawServiceConfig `json:"rawDeploymentServiceConfig,omitempty"`
 	NIM                        NIMSpec          `json:"nim,omitempty"`
 	WVA                        WVASpec          `json:"wva,omitempty"`
+	ModelCache                 *ModelCacheSpec  `json:"modelCache,omitempty"`
 }
 
 type NIMSpec struct {
@@ -57,6 +59,22 @@ type WVASpec struct {
 	// +kubebuilder:validation:Enum=Managed;Removed
 	// +kubebuilder:default=Removed
 	ManagementState common.ManagementState `json:"managementState,omitempty"`
+}
+
+// +kubebuilder:validation:XValidation:rule="self.managementState != 'Managed' || has(self.cacheSize)",message="cacheSize is required when managementState is Managed"
+// +kubebuilder:validation:XValidation:rule="self.managementState != 'Managed' || (has(self.nodeNames) && size(self.nodeNames) > 0) || (has(self.nodeSelector) && ((has(self.nodeSelector.matchLabels) && size(self.nodeSelector.matchLabels) > 0) || (has(self.nodeSelector.matchExpressions) && size(self.nodeSelector.matchExpressions) > 0)))",message="one non-empty nodeNames or nodeSelector is required when managementState is Managed"
+// +kubebuilder:validation:XValidation:rule="!(has(self.nodeNames) && has(self.nodeSelector))",message="nodeNames and nodeSelector are mutually exclusive"
+type ModelCacheSpec struct {
+	// +kubebuilder:validation:Enum=Managed;Removed
+	// +kubebuilder:default=Removed
+	ManagementState common.ManagementState `json:"managementState,omitempty"`
+	// +optional
+	CacheSize *resource.Quantity `json:"cacheSize,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	NodeNames []string `json:"nodeNames,omitempty"`
+	// +optional
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
 type KserveStatus struct {
