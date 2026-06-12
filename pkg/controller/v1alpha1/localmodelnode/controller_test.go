@@ -1198,6 +1198,354 @@ var _ = Describe("LocalModelNode controller", func() {
 				"Job should not use NodeName to allow the scheduler to establish PVC-to-node binding")
 		})
 
+		It("Should apply JobTolerations from NodeGroup to download job when NodeGroup is inferred from node affinity", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			fsMock.clear()
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constants.InferenceServiceConfigMapName,
+					Namespace: constants.KServeNamespace,
+				},
+				Data: configs,
+			}
+			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(ctx, configMap)
+
+			expectedTolerations := []corev1.Toleration{
+				{
+					Key:      "nvidia.com/gpu",
+					Operator: corev1.TolerationOpExists,
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			}
+
+			nodeGroup := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gpu",
+				},
+				Spec: v1alpha1.LocalModelNodeGroupSpec{
+					JobTolerations: expectedTolerations,
+					PersistentVolumeSpec: corev1.PersistentVolumeSpec{
+						AccessModes:                   []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						VolumeMode:                    ptr.To(corev1.PersistentVolumeFilesystem),
+						Capacity:                      corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("2Gi")},
+						StorageClassName:              "standard",
+						PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: "/models",
+								Type: ptr.To(corev1.HostPathDirectory),
+							},
+						},
+						NodeAffinity: &corev1.VolumeNodeAffinity{
+							Required: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      "node.kubernetes.io/instance-type",
+												Operator: corev1.NodeSelectorOpIn,
+												Values:   []string{"gpu"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					PersistentVolumeClaimSpec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("2Gi")}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup)
+
+			nodeName = "worker-tolerations-inferred"
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					Labels: map[string]string{
+						"node.kubernetes.io/instance-type": "gpu",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{
+							Type:   corev1.NodeReady,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
+			defer k8sClient.Delete(ctx, node)
+
+			tolerationsModelName := "toleration-model-inferred"
+			localModelNode := &v1alpha1.LocalModelNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+				},
+				Spec: v1alpha1.LocalModelNodeSpec{
+					LocalModels: []v1alpha1.LocalModelInfo{
+						{
+							SourceModelUri: "s3://mybucket/toleration-model",
+							ModelName:      tolerationsModelName,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
+			defer k8sClient.Delete(ctx, localModelNode)
+
+			jobs := &batchv1.JobList{}
+			labelSelector := map[string]string{
+				"model": tolerationsModelName,
+				"node":  nodeName,
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, jobs, client.InNamespace(jobNamespace), client.MatchingLabels(labelSelector))
+				return err == nil && len(jobs.Items) == 1
+			}, timeout, interval).Should(BeTrue(), "Download job should be created")
+
+			job := &jobs.Items[0]
+			Expect(job.Spec.Template.Spec.Tolerations).To(Equal(expectedTolerations),
+				"Job should have tolerations from NodeGroup when NodeGroup is inferred from node affinity")
+		})
+
+		It("Should apply JobTolerations from NodeGroup to download job when NodeGroup is explicitly specified", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			fsMock.clear()
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constants.InferenceServiceConfigMapName,
+					Namespace: constants.KServeNamespace,
+				},
+				Data: configs,
+			}
+			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(ctx, configMap)
+
+			expectedTolerations := []corev1.Toleration{
+				{
+					Key:      "dedicated",
+					Operator: corev1.TolerationOpEqual,
+					Value:    "inference",
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			}
+
+			nodeGroup := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "inference-pool",
+				},
+				Spec: v1alpha1.LocalModelNodeGroupSpec{
+					JobTolerations: expectedTolerations,
+					PersistentVolumeSpec: corev1.PersistentVolumeSpec{
+						AccessModes:                   []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						VolumeMode:                    ptr.To(corev1.PersistentVolumeFilesystem),
+						Capacity:                      corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("2Gi")},
+						StorageClassName:              "standard",
+						PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: "/models",
+								Type: ptr.To(corev1.HostPathDirectory),
+							},
+						},
+						NodeAffinity: &corev1.VolumeNodeAffinity{
+							Required: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      "node.kubernetes.io/instance-type",
+												Operator: corev1.NodeSelectorOpIn,
+												Values:   []string{"inference"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					PersistentVolumeClaimSpec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("2Gi")}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup)
+
+			nodeName = "worker-tolerations-explicit"
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					Labels: map[string]string{
+						"node.kubernetes.io/instance-type": "inference",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{
+							Type:   corev1.NodeReady,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
+			defer k8sClient.Delete(ctx, node)
+
+			tolerationsModelName := "toleration-model-explicit"
+			localModelNode := &v1alpha1.LocalModelNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+				},
+				Spec: v1alpha1.LocalModelNodeSpec{
+					LocalModels: []v1alpha1.LocalModelInfo{
+						{
+							SourceModelUri: "s3://mybucket/toleration-model-explicit",
+							ModelName:      tolerationsModelName,
+							NodeGroup:      "inference-pool",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
+			defer k8sClient.Delete(ctx, localModelNode)
+
+			jobs := &batchv1.JobList{}
+			labelSelector := map[string]string{
+				"model": tolerationsModelName,
+				"node":  nodeName,
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, jobs, client.InNamespace(jobNamespace), client.MatchingLabels(labelSelector))
+				return err == nil && len(jobs.Items) == 1
+			}, timeout, interval).Should(BeTrue(), "Download job should be created")
+
+			job := &jobs.Items[0]
+			Expect(job.Spec.Template.Spec.Tolerations).To(Equal(expectedTolerations),
+				"Job should have tolerations from NodeGroup when NodeGroup is explicitly specified")
+		})
+
+		It("Should create download job without tolerations when NodeGroup has no JobTolerations", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			fsMock.clear()
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constants.InferenceServiceConfigMapName,
+					Namespace: constants.KServeNamespace,
+				},
+				Data: configs,
+			}
+			Expect(k8sClient.Create(ctx, configMap)).NotTo(HaveOccurred())
+			defer k8sClient.Delete(ctx, configMap)
+
+			nodeGroup := &v1alpha1.LocalModelNodeGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "no-tolerations-group",
+				},
+				Spec: v1alpha1.LocalModelNodeGroupSpec{
+					PersistentVolumeSpec: corev1.PersistentVolumeSpec{
+						AccessModes:                   []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						VolumeMode:                    ptr.To(corev1.PersistentVolumeFilesystem),
+						Capacity:                      corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("2Gi")},
+						StorageClassName:              "standard",
+						PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: "/models",
+								Type: ptr.To(corev1.HostPathDirectory),
+							},
+						},
+						NodeAffinity: &corev1.VolumeNodeAffinity{
+							Required: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      "node.kubernetes.io/instance-type",
+												Operator: corev1.NodeSelectorOpIn,
+												Values:   []string{"standard"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					PersistentVolumeClaimSpec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("2Gi")}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nodeGroup)).Should(Succeed())
+			defer k8sClient.Delete(ctx, nodeGroup)
+
+			nodeName = "worker-no-tolerations"
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					Labels: map[string]string{
+						"node.kubernetes.io/instance-type": "standard",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{
+							Type:   corev1.NodeReady,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).Should(Succeed())
+			defer k8sClient.Delete(ctx, node)
+
+			noTolModelName := "no-toleration-model"
+			localModelNode := &v1alpha1.LocalModelNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+				},
+				Spec: v1alpha1.LocalModelNodeSpec{
+					LocalModels: []v1alpha1.LocalModelInfo{
+						{
+							SourceModelUri: "s3://mybucket/no-toleration-model",
+							ModelName:      noTolModelName,
+							NodeGroup:      "no-tolerations-group",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, localModelNode)).Should(Succeed())
+			defer k8sClient.Delete(ctx, localModelNode)
+
+			jobs := &batchv1.JobList{}
+			labelSelector := map[string]string{
+				"model": noTolModelName,
+				"node":  nodeName,
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, jobs, client.InNamespace(jobNamespace), client.MatchingLabels(labelSelector))
+				return err == nil && len(jobs.Items) == 1
+			}, timeout, interval).Should(BeTrue(), "Download job should be created")
+
+			job := &jobs.Items[0]
+			Expect(job.Spec.Template.Spec.Tolerations).To(BeNil(),
+				"Job should have no tolerations when NodeGroup has no JobTolerations")
+		})
+
 		It("Should append -download suffix to PVC name for namespace-scoped models", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
