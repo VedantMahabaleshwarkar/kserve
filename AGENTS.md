@@ -32,6 +32,25 @@ ODH midstream fork of [kserve/kserve](https://github.com/kserve/kserve). Go cont
 - Webhooks: `pkg/webhook/admission/`
 - Binaries: `cmd/manager/` (ISVC, InferenceGraph), `cmd/llmisvc/`, `cmd/localmodel/` (ModelCache)
 
+## CVE triage
+
+Do **not** assume a reported CVE affects shipped code — this repo contains far more source than
+is built into product images, so scanner hits often point at non-shipped paths. **Before fixing
+or closing any CVE**, follow [.rules/cve-triage.md](.rules/cve-triage.md) to verify whether the
+vulnerable package or code is present in a shipped image:
+
+| Shipped image | Dockerfile |
+|---------------|------------|
+| KServe controller | `Dockerfile` |
+| Inference router | `router.Dockerfile` |
+| LocalModel controller | `localmodel.Dockerfile` |
+| LocalModel node agent | `localmodel-agent.Dockerfile` |
+| LLMISVC controller | `llmisvc-controller.Dockerfile` |
+| Storage initializer | `python/storage-initializer.Dockerfile` |
+
+Go images build from `cmd/<binary>/` + `pkg/` only. The storage initializer is the sole shipped
+Python image — its deps live in `python/storage/`, not `python/kserve/` or other server trees.
+
 ## Commands
 
 ```
